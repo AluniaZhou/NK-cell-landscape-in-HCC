@@ -1,0 +1,1466 @@
+########################################################################################################################################
+##################################################Loading public datasets###############################################################
+# Loading GSE112271
+library(Seurat)
+library(Matrix)
+library(stringr)
+data_dir <- "/Users/alunia/RData/Public HCC/112271/GSE112271_RAW"
+mtx_files <- list.files(data_dir, pattern = "_matrix\\.mtx\\.gz$", full.names = TRUE)
+read_one_sample <- function(mtx_path) {
+  root <- sub("_matrix\\.mtx\\.gz$", "", basename(mtx_path))
+  barcodes <- file.path(dirname(mtx_path), paste0(root, "_barcodes.tsv.gz"))
+  features1 <- file.path(dirname(mtx_path), paste0(root, "_features.tsv.gz"))  
+  features2 <- file.path(dirname(mtx_path), paste0(root, "_genes.tsv.gz"))     
+  features <- if (file.exists(features1)) features1 else if (file.exists(features2)) features2 else NA
+  if (!file.exists(barcodes)) stop(paste0("Missing barcodes for ", root))
+  if (is.na(features)) stop(paste0("Missing features/genes file for ", root))
+  mat <- ReadMtx(mtx = mtx_path, features = features, cells = barcodes)
+  obj <- CreateSeuratObject(mat, project = root, min.cells = 0, min.features = 0)
+  obj$Sample_ID  <- root
+  obj$Patient_ID <- sub("\\.[^.]+$", "", root)
+  obj$orig.ident <- root
+  colnames(obj) <- paste0(root, "_", colnames(obj))
+  obj
+}
+objs <- lapply(mtx_files, read_one_sample)
+if (length(objs) == 1) {
+  seu <- objs[[1]]
+} else {
+  seu <- Reduce(function(a, b) merge(a, y = b), objs)
+}
+gse112271 <- seu
+gse112271@meta.data[which(gse112271@meta.data$Sample_ID %in% c('GSM3064818_Pt13.a','GSM3064819_Pt13.b','GSM3064820_Pt13.c')),'Patient_ID'] <- 'GSE112271_Pt13'
+gse112271@meta.data[which(gse112271@meta.data$Sample_ID %in% c('GSM3064821_Pt14.a','GSM3064822_Pt14.b','GSM3064823_Pt14.c','GSM3064824_Pt14.d')),'Patient_ID'] <- 'GSE112271_Pt14'
+gse112271@meta.data[which(gse112271@meta.data$Sample_ID %in% c('GSM3064818_Pt13.a','GSM3064819_Pt13.b','GSM3064820_Pt13.c')),'Etiology'] <- 'Unknown'
+gse112271@meta.data[which(gse112271@meta.data$Sample_ID %in% c('GSM3064821_Pt14.a','GSM3064822_Pt14.b','GSM3064823_Pt14.c','GSM3064824_Pt14.d')),'Etiology'] <- 'HBV'
+gse112271 <- JoinLayers(gse112271)
+gse112271$Batch <- '112271'
+gse112271$Timing <- 'Baseline'
+gse112271$Treatment <- 'None'
+
+#Load data GSE125499
+setwd('/Users/alunia/RData/Public HCC/125449')
+a <- Matrix::readMM('GSE125449_Set1_matrix.mtx.gz')
+b <- read.table("GSE125449_Set1_genes.tsv.gz")
+c <- read.table("GSE125449_Set1_barcodes.tsv.gz")
+rownames(a) <- b[[2]]
+colnames(a) <- c[[1]]
+d<- read.csv("GSE125449_Set1_samples.txt.gz", sep = '')
+a_clean <- a[!duplicated(rownames(a)), , drop = FALSE]
+sce.meta <- data.frame(Sample_ID=d$Sample,row.names = d$Cell)
+scRNA = CreateSeuratObject(counts=a_clean,
+                           meta.data = sce.meta,
+                           min.cells = 3,
+                           min.features = 50)
+set1 <- scRNA
+a <- Matrix::readMM('GSE125449_Set2_matrix.mtx.gz')
+b <- read.table("GSE125449_Set2_genes.tsv.gz")
+c <- read.table("GSE125449_Set2_barcodes.tsv.gz")
+rownames(a) <- b[[2]]
+colnames(a) <- c[[1]]
+d<- read.csv("GSE125449_Set2_samples.txt.gz", sep = '')
+a_clean <- a[!duplicated(rownames(a)), , drop = FALSE]
+sce.meta <- data.frame(Sample_ID=d$Sample,row.names = d$Cell)
+scRNA = CreateSeuratObject(counts=a_clean,
+                           meta.data = sce.meta,
+                           min.cells = 3,
+                           min.features = 50)
+set2 <- scRNA
+set1 <- subset(set1, subset = Sample_ID %in% c('S16_P10_LCP18','S02_P01_LCP21','S10_P05_LCP23','S07_P02_LCP28','S12_P07_LCP30','S21_P13_LCP37','S15_P09_LCP38'))
+set2 <- subset(set2, subset = Sample_ID %in% c('S351_P10_LCP34','S364_P21_LCP65'))
+set1@meta.data[which(set1@meta.data$Sample_ID == 'S02_P01_LCP21'),'Etiology'] <- 'None'
+set1@meta.data[which(set1@meta.data$Sample_ID == 'S07_P02_LCP28'),'Etiology'] <- 'HCV'
+set1@meta.data[which(set1@meta.data$Sample_ID == 'S10_P05_LCP23'),'Etiology'] <- 'Fatty Liver'
+set1@meta.data[which(set1@meta.data$Sample_ID == 'S12_P07_LCP30'),'Etiology'] <- 'HCV'
+set1@meta.data[which(set1@meta.data$Sample_ID == 'S15_P09_LCP38'),'Etiology'] <- 'None'
+set1@meta.data[which(set1@meta.data$Sample_ID == 'S16_P10_LCP18'),'Etiology'] <- 'HCV'
+set1@meta.data[which(set1@meta.data$Sample_ID == 'S21_P13_LCP37'),'Etiology'] <- 'HCV'
+set2@meta.data[which(set2@meta.data$Sample_ID == 'S351_P10_LCP34'),'Etiology'] <- 'HCV'
+set2@meta.data[which(set2@meta.data$Sample_ID == 'S364_P21_LCP65'),'Etiology'] <- 'HCV'
+set1@meta.data[which(set1@meta.data$Sample_ID == 'S02_P01_LCP21'),'Timing'] <- 'Baseline'
+set1@meta.data[which(set1@meta.data$Sample_ID == 'S07_P02_LCP28'),'Timing'] <- 'Baseline'
+set1@meta.data[which(set1@meta.data$Sample_ID == 'S10_P05_LCP23'),'Timing'] <- 'Baseline'
+set1@meta.data[which(set1@meta.data$Sample_ID == 'S12_P07_LCP30'),'Timing'] <- 'Baseline'
+set1@meta.data[which(set1@meta.data$Sample_ID == 'S15_P09_LCP38'),'Timing'] <- 'Baseline'
+set1@meta.data[which(set1@meta.data$Sample_ID == 'S16_P10_LCP18'),'Timing'] <- 'Week 32'
+set1@meta.data[which(set1@meta.data$Sample_ID == 'S21_P13_LCP37'),'Timing'] <- 'Week 6'
+set2@meta.data[which(set2@meta.data$Sample_ID == 'S351_P10_LCP34'),'Timing'] <- 'Baseline'
+set2@meta.data[which(set2@meta.data$Sample_ID == 'S364_P21_LCP65'),'Timing'] <- 'Baseline'
+set1@meta.data[which(set1@meta.data$Sample_ID == 'S02_P01_LCP21'),'Treatment'] <- 'None'
+set1@meta.data[which(set1@meta.data$Sample_ID == 'S07_P02_LCP28'),'Treatment'] <- 'PD-L1/CTLA-4'
+set1@meta.data[which(set1@meta.data$Sample_ID == 'S10_P05_LCP23'),'Treatment'] <- 'PD-L1/CTLA-4'
+set1@meta.data[which(set1@meta.data$Sample_ID == 'S12_P07_LCP30'),'Treatment'] <- 'PD-L1/CTLA-4'
+set1@meta.data[which(set1@meta.data$Sample_ID == 'S15_P09_LCP38'),'Treatment'] <- 'None'
+set1@meta.data[which(set1@meta.data$Sample_ID == 'S16_P10_LCP18'),'Treatment'] <- 'PD-L1/CTLA-4'
+set1@meta.data[which(set1@meta.data$Sample_ID == 'S21_P13_LCP37'),'Treatment'] <- 'PD-L1/CTLA-4'
+set2@meta.data[which(set2@meta.data$Sample_ID == 'S351_P10_LCP34'),'Treatment'] <- 'PD-L1/CTLA-4'
+set2@meta.data[which(set2@meta.data$Sample_ID == 'S364_P21_LCP65'),'Treatment'] <- 'PD-L1/CTLA-4'
+gse125449 <- merge(x=set1, y=set2)
+gse125449 <- JoinLayers(gse125449)
+gse125449$Tissue <- 'HCC'
+gse125449$Batch <- '125449'
+gse125449@meta.data[which(gse125449@meta.data$Sample_ID == 'S364_P21_LCP65'),'Patient_ID'] <- 'GSE125449_H65'
+gse125449@meta.data[which(gse125449@meta.data$Sample_ID == 'S02_P01_LCP21'),'Patient_ID'] <- 'GSE125449_H21'
+gse125449@meta.data[which(gse125449@meta.data$Sample_ID == 'S07_P02_LCP28'),'Patient_ID'] <- 'GSE125449_H28'
+gse125449@meta.data[which(gse125449@meta.data$Sample_ID == 'S10_P05_LCP23'),'Patient_ID'] <- 'GSE125449_H23'
+gse125449@meta.data[which(gse125449@meta.data$Sample_ID == 'S12_P07_LCP30'),'Patient_ID'] <- 'GSE125449_H30'
+gse125449@meta.data[which(gse125449@meta.data$Sample_ID == 'S15_P09_LCP38'),'Patient_ID'] <- 'GSE125449_H38'
+gse125449@meta.data[which(gse125449@meta.data$Sample_ID == 'S16_P10_LCP18'),'Patient_ID'] <- 'GSE125449_H18'
+gse125449@meta.data[which(gse125449@meta.data$Sample_ID == 'S21_P13_LCP37'),'Patient_ID'] <- 'GSE125449_H37'
+gse125449@meta.data[which(gse125449@meta.data$Sample_ID == 'S351_P10_LCP34'),'Patient_ID'] <- 'GSE125449_H34'
+gse125449@meta.data[which(gse125449@meta.data$Sample_ID == 'S364_P21_LCP65'),'Patient_ID'] <- 'GSE125449_H65'
+rm(list = setdiff(ls(envir = .GlobalEnv), c("gse112271", "gse125449")), envir = .GlobalEnv)
+gse125449@meta.data[which(gse125449@meta.data$Timing == 'Week 32'),'Timing'] <- 'Post'
+gse125449@meta.data[which(gse125449@meta.data$Timing == 'Week 6'),'Timing'] <- 'Post'
+
+#Load GSE140228
+setwd('/Users/alunia/RData/Public HCC/140228/140228 10X scRNA')
+load('scRNA.Rdata')
+scRNA@meta.data <- scRNA@meta.data[,-2]
+scRNA@meta.data <- scRNA@meta.data[,-4]
+scRNA@meta.data <- scRNA@meta.data[,-c(6:9)]
+scRNA <- subset(scRNA, subset = Patient_ID %in% c('D20171109','D20180108','D20180110','D20180116'))
+scRNA <- subset(scRNA, subset = Tissue %in% c('Blood','Tumor','Normal'))
+scRNA$Batch <- '140228'
+scRNA$Timing <- 'Baseline'
+scRNA$Treatment <- 'None'
+scRNA@meta.data[which(scRNA@meta.data$Tissue == 'Tumor'),'Tissue'] <- 'HCC'
+scRNA@meta.data[which(scRNA@meta.data$Tissue == 'Normal'),'Tissue'] <- 'Adjacent Liver'
+scRNA$Etiology <- 'HBV'
+scRNA@meta.data[which(scRNA@meta.data$Patient_ID == 'D20180108'),'Etiology'] <- 'Unknown'
+gse140228_1 <- scRNA
+setwd('/Users/alunia/RData/Public HCC/140228/140228 Smart2 scRNA/scRNA')
+load('scRNA.Rdata')
+scRNA@meta.data <- scRNA@meta.data[,-c(2,5,8,9,10,11,12)]
+scRNA <- subset(scRNA, subset = Tissue %in% c('Blood','Tumor','Normal'))
+scRNA$Batch <- '140228'
+scRNA$Timing <- 'Baseline'
+scRNA$Treatment <- 'None'
+scRNA@meta.data[which(scRNA@meta.data$Tissue == 'Tumor'),'Tissue'] <- 'HCC'
+scRNA@meta.data[which(scRNA@meta.data$Tissue == 'Normal'),'Tissue'] <- 'Adjacent Liver'
+scRNA$Etiology <- 'HBV'
+scRNA@meta.data[which(scRNA@meta.data$Patient_ID == 'D20170227'),'Etiology'] <- 'Unknown'
+gse140228_2 <- scRNA
+
+#Load GSE146115
+setwd('/Users/alunia/RData/Public HCC/146115')
+a <- read.csv('GSE146115_HCC1-2-5-9_count_with_ERCC.txt.gz', sep = '')
+expr_num <- as.data.frame(lapply(a[ , -1, drop = FALSE], function(x) as.numeric(as.character(x))))
+stopifnot(!any(is.na(colnames(expr_num))))  # sanity
+df2 <- bind_cols(gene = a$Gene.Cell, expr_num)
+df_agg <- df2 %>%
+  group_by(gene) %>%
+  summarise(across(everything(), sum), .groups = "drop")
+counts <- as.matrix(df_agg[ , -1, drop = FALSE])
+rownames(counts) <- df_agg$gene
+cells <- colnames(counts)
+Patient_ID <- dplyr::case_when(
+  startsWith(cells, "HCC1") ~ "gse146115_P1",
+  startsWith(cells, "HCC2") ~ "gse146115_P2",
+  startsWith(cells, "HCC5") ~ "gse146115_P5",
+  startsWith(cells, "HCC8") ~ "gse146115_P8",
+  startsWith(cells, "HCC9") ~ "gse146115_P9",
+  TRUE ~ NA_character_
+)
+meta <- data.frame(Patient_ID = Patient_ID, row.names = cells, check.names = FALSE)
+gse146115 <- CreateSeuratObject(counts=counts,
+                                meta.data = meta,
+                                min.cells = 3,
+                                min.features = 50)
+gse146115$Tissue <- 'HCC'
+gse146115$Etiology <- 'Unknown'
+gse146115$Batch <- '146115'
+gse146115$Timing <- 'Baseline'
+gse146115$Treatment <- 'None'
+
+#Load GSE149614
+setwd('/Users/alunia/RData/Public HCC/149614')
+b <- read.csv('GSE149614_HCC.scRNAseq.S71915.count.txt.gz', sep = '')
+d <- read.csv('GSE149614_HCC.metadata.updated.txt.gz', sep = '')
+sce.meta <- data.frame(Tissue=d$site,Patient_ID=d$patient,Etiology = d$virus,row.names = d$Cell)
+scRNA = CreateSeuratObject(counts=b,
+                           meta.data = sce.meta,
+                           min.cells = 3,
+                           min.features = 50)
+scRNA$Batch <- '149614'
+scRNA$Timing <- 'Baseline'
+scRNA$Treatment <- 'None'
+scRNA <- subset(scRNA, subset = Tissue %in% c('Normal','Tumor'))
+scRNA@meta.data[which(scRNA@meta.data$Tissue == 'Tumor'),'Tissue'] <- 'HCC'
+scRNA@meta.data[which(scRNA@meta.data$Tissue == 'Normal'),'Tissue'] <- 'Adjacent Liver'
+scRNA@meta.data[which(scRNA@meta.data$Patient_ID == 'HCC01'),'Patient_ID'] <- 'GSE149614_P1'
+scRNA@meta.data[which(scRNA@meta.data$Patient_ID == 'HCC02'),'Patient_ID'] <- 'GSE149614_P2'
+scRNA@meta.data[which(scRNA@meta.data$Patient_ID == 'HCC03'),'Patient_ID'] <- 'GSE149614_P3'
+scRNA@meta.data[which(scRNA@meta.data$Patient_ID == 'HCC04'),'Patient_ID'] <- 'GSE149614_P4'
+scRNA@meta.data[which(scRNA@meta.data$Patient_ID == 'HCC05'),'Patient_ID'] <- 'GSE149614_P5'
+scRNA@meta.data[which(scRNA@meta.data$Patient_ID == 'HCC06'),'Patient_ID'] <- 'GSE149614_P6'
+scRNA@meta.data[which(scRNA@meta.data$Patient_ID == 'HCC07'),'Patient_ID'] <- 'GSE149614_P7'
+scRNA@meta.data[which(scRNA@meta.data$Patient_ID == 'HCC08'),'Patient_ID'] <- 'GSE149614_P8'
+scRNA@meta.data[which(scRNA@meta.data$Patient_ID == 'HCC09'),'Patient_ID'] <- 'GSE149614_P9'
+scRNA@meta.data[which(scRNA@meta.data$Patient_ID == 'HCC010'),'Patient_ID'] <- 'GSE149614_P10'
+gse149614 <- scRNA
+
+#Load GSE151530
+setwd('/Users/alunia/RData/Public HCC/151530/Human HCC before and after PD1 treatment GSE151530/Rawdata')
+a <- Matrix::readMM('GSE151530_matrix.mtx.gz')
+b <- read.table("GSE151530_genes.tsv.gz")
+c <- read.table("GSE151530_barcodes.tsv.gz")
+rownames(a) <- b$V2
+colnames(a) <- c[[1]]
+if (!inherits(a, "dgCMatrix")) a <- as(a, "dgCMatrix")
+genes <- rownames(a)
+tot   <- Matrix::rowSums(a)
+best_index <- tapply(seq_along(genes), genes, function(ix) ix[ which.max(tot[ix]) ])
+keep <- logical(nrow(a)); keep[unlist(best_index, use.names = FALSE)] <- TRUE
+a_best <- a[keep, , drop = FALSE]
+d <- read.csv('GSE151530_Info.csv', sep = '', header = F)
+colnames(d) <- d[1,]
+d <- d[-1,]
+sce.meta <- data.frame(Patient_ID=d$Sample,Sample_ID=d$S_ID,row.names = d$Cell)
+NK = CreateSeuratObject(counts=a_best,
+                        meta.data = sce.meta,
+                        min.cells = 3,
+                        min.features = 50)
+NK <- subset(NK, subset = Patient_ID %in% c('H08','H34b','H34c','H41','H43','H49a','H49b','H54','H55','H58a','H58b','H58c','H62','H63','H68a','H68b','H70','H72','H73a','H73b','H74','H75','H77'))
+NK$Tissue <- 'HCC'
+NK$Batch <- '151530'
+NK@meta.data[which(NK@meta.data$Patient_ID == 'H08'),'Sample_ID'] <- 'GSE11530_08'
+NK@meta.data[which(NK@meta.data$Patient_ID == 'H34b'),'Sample_ID'] <- 'GSE11530_34b'
+NK@meta.data[which(NK@meta.data$Patient_ID == 'H34c'),'Sample_ID'] <- 'GSE11530_34c'
+NK@meta.data[which(NK@meta.data$Patient_ID == 'H41'),'Sample_ID'] <- 'GSE11530_41'
+NK@meta.data[which(NK@meta.data$Patient_ID == 'H43'),'Sample_ID'] <- 'GSE11530_43'
+NK@meta.data[which(NK@meta.data$Patient_ID == 'H49a'),'Sample_ID'] <- 'GSE11530_49a'
+NK@meta.data[which(NK@meta.data$Patient_ID == 'H49b'),'Sample_ID'] <- 'GSE11530_49b'
+NK@meta.data[which(NK@meta.data$Patient_ID == 'H54'),'Sample_ID'] <- 'GSE11530_54'
+NK@meta.data[which(NK@meta.data$Patient_ID == 'H55'),'Sample_ID'] <- 'GSE11530_55'
+NK@meta.data[which(NK@meta.data$Patient_ID == 'H58a'),'Sample_ID'] <- 'GSE11530_58a'
+NK@meta.data[which(NK@meta.data$Patient_ID == 'H58b'),'Sample_ID'] <- 'GSE11530_58b'
+NK@meta.data[which(NK@meta.data$Patient_ID == 'H58c'),'Sample_ID'] <- 'GSE11530_58c'
+NK@meta.data[which(NK@meta.data$Patient_ID == 'H62'),'Sample_ID'] <- 'GSE11530_62'
+NK@meta.data[which(NK@meta.data$Patient_ID == 'H63'),'Sample_ID'] <- 'GSE11530_63'
+NK@meta.data[which(NK@meta.data$Patient_ID == 'H68a'),'Sample_ID'] <- 'GSE11530_68a'
+NK@meta.data[which(NK@meta.data$Patient_ID == 'H68b'),'Sample_ID'] <- 'GSE11530_68b'
+NK@meta.data[which(NK@meta.data$Patient_ID == 'H70'),'Sample_ID'] <- 'GSE11530_70'
+NK@meta.data[which(NK@meta.data$Patient_ID == 'H72'),'Sample_ID'] <- 'GSE11530_72'
+NK@meta.data[which(NK@meta.data$Patient_ID == 'H73a'),'Sample_ID'] <- 'GSE11530_73a'
+NK@meta.data[which(NK@meta.data$Patient_ID == 'H73b'),'Sample_ID'] <- 'GSE11530_73b'
+NK@meta.data[which(NK@meta.data$Patient_ID == 'H74'),'Sample_ID'] <- 'GSE11530_74'
+NK@meta.data[which(NK@meta.data$Patient_ID == 'H75'),'Sample_ID'] <- 'GSE11530_75'
+NK@meta.data[which(NK@meta.data$Patient_ID == 'H77'),'Sample_ID'] <- 'GSE11530_77'
+
+NK@meta.data[which(NK@meta.data$Patient_ID == 'H08'),'Timing'] <- 'Baseline'
+NK@meta.data[which(NK@meta.data$Patient_ID == 'H34b'),'Timing'] <- 'Post'
+NK@meta.data[which(NK@meta.data$Patient_ID == 'H34c'),'Timing'] <- 'Post'
+NK@meta.data[which(NK@meta.data$Patient_ID == 'H41'),'Timing'] <- 'Baseline'
+NK@meta.data[which(NK@meta.data$Patient_ID == 'H43'),'Timing'] <- 'Baseline'
+NK@meta.data[which(NK@meta.data$Patient_ID == 'H49a'),'Timing'] <- 'Baseline'
+NK@meta.data[which(NK@meta.data$Patient_ID == 'H49b'),'Timing'] <- 'Post'
+NK@meta.data[which(NK@meta.data$Patient_ID == 'H54'),'Timing'] <- 'Baseline'
+NK@meta.data[which(NK@meta.data$Patient_ID == 'H55'),'Timing'] <- 'Baseline'
+NK@meta.data[which(NK@meta.data$Patient_ID == 'H58a'),'Timing'] <- 'Baseline'
+NK@meta.data[which(NK@meta.data$Patient_ID == 'H58b'),'Timing'] <- 'Post'
+NK@meta.data[which(NK@meta.data$Patient_ID == 'H58c'),'Timing'] <- 'Post'
+NK@meta.data[which(NK@meta.data$Patient_ID == 'H62'),'Timing'] <- 'Baseline'
+NK@meta.data[which(NK@meta.data$Patient_ID == 'H63'),'Timing'] <- 'Baseline'
+NK@meta.data[which(NK@meta.data$Patient_ID == 'H68a'),'Timing'] <- 'Baseline'
+NK@meta.data[which(NK@meta.data$Patient_ID == 'H68b'),'Timing'] <- 'Post'
+NK@meta.data[which(NK@meta.data$Patient_ID == 'H70'),'Timing'] <- 'Baseline'
+NK@meta.data[which(NK@meta.data$Patient_ID == 'H72'),'Timing'] <- 'Baseline'
+NK@meta.data[which(NK@meta.data$Patient_ID == 'H73a'),'Timing'] <- 'Baseline'
+NK@meta.data[which(NK@meta.data$Patient_ID == 'H73b'),'Timing'] <- 'Post'
+NK@meta.data[which(NK@meta.data$Patient_ID == 'H74'),'Timing'] <- 'Baseline'
+NK@meta.data[which(NK@meta.data$Patient_ID == 'H75'),'Timing'] <- 'Baseline'
+NK@meta.data[which(NK@meta.data$Patient_ID == 'H77'),'Timing'] <- 'Baseline'
+
+NK@meta.data[which(NK@meta.data$Patient_ID == 'H08'),'Etiology'] <- 'HCV'
+NK@meta.data[which(NK@meta.data$Patient_ID == 'H34b'),'Etiology'] <- 'HCV'
+NK@meta.data[which(NK@meta.data$Patient_ID == 'H34c'),'Etiology'] <- 'HCV'
+NK@meta.data[which(NK@meta.data$Patient_ID == 'H41'),'Etiology'] <- 'HCV'
+NK@meta.data[which(NK@meta.data$Patient_ID == 'H43'),'Etiology'] <- 'HBV'
+NK@meta.data[which(NK@meta.data$Patient_ID == 'H49a'),'Etiology'] <- 'HCV'
+NK@meta.data[which(NK@meta.data$Patient_ID == 'H49b'),'Etiology'] <- 'HCV'
+NK@meta.data[which(NK@meta.data$Patient_ID == 'H54'),'Etiology'] <- 'HBV'
+NK@meta.data[which(NK@meta.data$Patient_ID == 'H55'),'Etiology'] <- 'None'
+NK@meta.data[which(NK@meta.data$Patient_ID == 'H58a'),'Etiology'] <- 'None'
+NK@meta.data[which(NK@meta.data$Patient_ID == 'H58b'),'Etiology'] <- 'None'
+NK@meta.data[which(NK@meta.data$Patient_ID == 'H58c'),'Etiology'] <- 'None'
+NK@meta.data[which(NK@meta.data$Patient_ID == 'H62'),'Etiology'] <- 'HCV'
+NK@meta.data[which(NK@meta.data$Patient_ID == 'H63'),'Etiology'] <- 'HBV'
+NK@meta.data[which(NK@meta.data$Patient_ID == 'H68a'),'Etiology'] <- 'HBV'
+NK@meta.data[which(NK@meta.data$Patient_ID == 'H68b'),'Etiology'] <- 'HBV'
+NK@meta.data[which(NK@meta.data$Patient_ID == 'H70'),'Etiology'] <- 'None'
+NK@meta.data[which(NK@meta.data$Patient_ID == 'H72'),'Etiology'] <- 'Fatty Liver'
+NK@meta.data[which(NK@meta.data$Patient_ID == 'H73a'),'Etiology'] <- 'HBV'
+NK@meta.data[which(NK@meta.data$Patient_ID == 'H73b'),'Etiology'] <- 'HBV'
+NK@meta.data[which(NK@meta.data$Patient_ID == 'H74'),'Etiology'] <- 'HCV'
+NK@meta.data[which(NK@meta.data$Patient_ID == 'H75'),'Etiology'] <- 'HCV'
+NK@meta.data[which(NK@meta.data$Patient_ID == 'H77'),'Etiology'] <- 'HCV'
+
+NK@meta.data[which(NK@meta.data$Patient_ID == 'H08'),'Treatment'] <- 'CTLA-4'
+NK@meta.data[which(NK@meta.data$Patient_ID == 'H34b'),'Treatment'] <- 'PD-L1/CTLA-4'
+NK@meta.data[which(NK@meta.data$Patient_ID == 'H34c'),'Treatment'] <- 'PD-L1/CTLA-4'
+NK@meta.data[which(NK@meta.data$Patient_ID == 'H41'),'Treatment'] <- 'None'
+NK@meta.data[which(NK@meta.data$Patient_ID == 'H43'),'Treatment'] <- 'PD-L1/CTLA-4'
+NK@meta.data[which(NK@meta.data$Patient_ID == 'H49a'),'Treatment'] <- 'PD-L1/CTLA-4'
+NK@meta.data[which(NK@meta.data$Patient_ID == 'H49b'),'Treatment'] <- 'PD-L1/CTLA-4'
+NK@meta.data[which(NK@meta.data$Patient_ID == 'H54'),'Treatment'] <- 'PD-L1/CTLA-4'
+NK@meta.data[which(NK@meta.data$Patient_ID == 'H55'),'Treatment'] <- 'PD-L1/CTLA-4'
+NK@meta.data[which(NK@meta.data$Patient_ID == 'H58a'),'Treatment'] <- 'PD-L1/CTLA-4'
+NK@meta.data[which(NK@meta.data$Patient_ID == 'H58b'),'Treatment'] <- 'PD-L1/CTLA-4'
+NK@meta.data[which(NK@meta.data$Patient_ID == 'H58c'),'Treatment'] <- 'PD-L1/CTLA-4'
+NK@meta.data[which(NK@meta.data$Patient_ID == 'H62'),'Treatment'] <- 'None'
+NK@meta.data[which(NK@meta.data$Patient_ID == 'H63'),'Treatment'] <- 'PD-L1/CTLA-4'
+NK@meta.data[which(NK@meta.data$Patient_ID == 'H68a'),'Treatment'] <- 'PD-L1/CTLA-4'
+NK@meta.data[which(NK@meta.data$Patient_ID == 'H68b'),'Treatment'] <- 'PD-L1/CTLA-4'
+NK@meta.data[which(NK@meta.data$Patient_ID == 'H70'),'Treatment'] <- 'None'
+NK@meta.data[which(NK@meta.data$Patient_ID == 'H72'),'Treatment'] <- 'None'
+NK@meta.data[which(NK@meta.data$Patient_ID == 'H73a'),'Treatment'] <- 'PD-L1/CTLA-4'
+NK@meta.data[which(NK@meta.data$Patient_ID == 'H73b'),'Treatment'] <- 'PD-L1/CTLA-4'
+NK@meta.data[which(NK@meta.data$Patient_ID == 'H74'),'Treatment'] <- 'PD-L1/CTLA-4'
+NK@meta.data[which(NK@meta.data$Patient_ID == 'H75'),'Treatment'] <- 'None'
+NK@meta.data[which(NK@meta.data$Patient_ID == 'H77'),'Treatment'] <- 'PD-L1/CTLA-4'
+gse151530 <- NK
+
+
+#Load GSE154906
+setwd('/Users/alunia/RData/Public HCC/154906')
+a <- read.csv('GSE154906_405CellsNewName_20200617.csv.gz')
+rownames(a) <- a[,1]
+a <- a[,-1]
+a_mat <- as.matrix(a)
+mode(a_mat) <- "numeric"
+cells <- colnames(a_mat)
+Patient_ID <- str_extract(cells, "^PT\\d+")
+meta <- data.frame(Patient_ID = Patient_ID,
+                   row.names = cells,
+                   check.names = FALSE)
+scRNA = CreateSeuratObject(counts=a_mat,
+                           meta.data = meta,
+                           min.cells = 3,
+                           min.features = 50)
+scRNA$Tissue <- 'HCC'
+scRNA$Batch <- '154906'
+scRNA$Timing <- 'Baseline'
+scRNA$Treatment <- 'None'
+scRNA$Etiology <- 'HBV'
+gse154906 <- scRNA
+
+
+#Load GSE156652
+setwd('/Users/alunia/RData/Public HCC/156625')
+a <- Matrix::readMM('GSE156625_HCCmatrix.mtx.gz')
+b <- read.table("GSE156625_HCCgenes.tsv.gz")
+c <- read.table("GSE156625_HCCbarcodes.tsv.gz")
+library(zellkonverter)
+library(SingleCellExperiment)
+library(Seurat)
+library(Matrix)
+sce <- readH5AD("GSE156625_HCCscanpyobj.h5ad")
+assay(sce, "counts") <- assay(sce, "X")
+seu <- as.Seurat(sce, counts = "counts", data = NULL)
+rownames(a) <- b$V2
+colnames(a) <- c[[1]]
+umis   <- Matrix::colSums(a)
+# Detected genes per barcode (for dgCMatrix, use column pointer @p):
+genesd <- if (inherits(a, "dgCMatrix")) diff(a@p) else Matrix::colSums(a > 0)
+# Simple thresholds (tune for your data):
+min_umi   <- 500
+min_genes <- 200
+keep      <- which(umis >= min_umi & genesd >= min_genes)
+# Subset to real-ish cells
+a_filt <- a[, keep, drop = FALSE]
+c_filt <- colnames(a_filt)
+meta_old <- seu@meta.data
+meta_new <- meta_old[intersect(rownames(meta_old), c_filt), , drop = FALSE]
+if (nrow(meta_new) < length(c_filt)) {
+  missing <- setdiff(c_filt, rownames(meta_new))
+  filler  <- as.data.frame(matrix(NA, nrow = length(missing), ncol = ncol(meta_old)))
+  colnames(filler) <- colnames(meta_old); rownames(filler) <- missing
+  meta_new <- rbind(meta_new, filler)
+}
+meta_new <- meta_new[c_filt, , drop = FALSE]
+meta_new[] <- lapply(meta_new, function(x) if (is.factor(x)) as.character(x) else x)
+if (!inherits(a_filt, "dgCMatrix")) a_filt <- as(a_filt, "dgCMatrix")
+genes <- rownames(a_filt)
+tot   <- Matrix::rowSums(a_filt)
+best_index <- tapply(seq_along(genes), genes, function(ix) ix[ which.max(tot[ix]) ])
+keep <- logical(nrow(a_filt)); keep[unlist(best_index, use.names = FALSE)] <- TRUE
+a_best <- a_filt[keep, , drop = FALSE]
+keep <- match(colnames(seu), colnames(a_best))
+keep <- keep[!is.na(keep)]
+a1 <- a_best[, keep, drop = FALSE]
+scRNA <- CreateSeuratObject(counts = a1,
+                            meta.data = meta_new,
+                            min.cells = 3,
+                            min.features = 50)
+scRNA@meta.data <-scRNA@meta.data[,c(1,2,3,10,11,12,13,16)]
+colnames(scRNA@meta.data)[colnames(scRNA@meta.data) == "patientno"] <- "Patient_ID"
+colnames(scRNA@meta.data)[colnames(scRNA@meta.data) == "patient_tumorsection"] <- "Sample_ID"
+scRNA@meta.data[which(scRNA@meta.data$NormalvsTumor == 'N'),'Tissue'] <- 'Adjacent Liver'
+scRNA@meta.data[which(scRNA@meta.data$NormalvsTumor == 'T'),'Tissue'] <- 'HCC'
+scRNA@meta.data[which(scRNA@meta.data$Patient_ID == 'HN1'),'Tissue'] <- 'Healthy Liver'
+scRNA@meta.data[which(scRNA@meta.data$ViralvsNonViral == 'Positive'),'Etiology'] <- 'HBV'
+scRNA@meta.data[which(scRNA@meta.data$ViralvsNonViral == 'Negative'),'Etiology'] <- 'Unknown'
+scRNA@meta.data <-scRNA@meta.data[,c(1,2,3,5,7,9,10)]
+scRNA$Batch <- '156652'
+scRNA$Treatment <- 'None'
+scRNA$Timing <- 'Baseline'
+scRNA@meta.data[which(scRNA@meta.data$Patient_ID == 'P1'),'Patient_ID'] <- 'gse156652_Pt1'
+scRNA@meta.data[which(scRNA@meta.data$Patient_ID == 'P10'),'Patient_ID'] <- 'gse156652_Pt10'
+scRNA@meta.data[which(scRNA@meta.data$Patient_ID == 'P11'),'Patient_ID'] <- 'gse156652_Pt11'
+scRNA@meta.data[which(scRNA@meta.data$Patient_ID == 'P13'),'Patient_ID'] <- 'gse156652_Pt13'
+scRNA@meta.data[which(scRNA@meta.data$Patient_ID == 'P14'),'Patient_ID'] <- 'gse156652_Pt14'
+scRNA@meta.data[which(scRNA@meta.data$Patient_ID == 'P15'),'Patient_ID'] <- 'gse156652_Pt15'
+scRNA@meta.data[which(scRNA@meta.data$Patient_ID == 'P2'),'Patient_ID'] <- 'gse156652_Pt2'
+scRNA@meta.data[which(scRNA@meta.data$Patient_ID == 'P3'),'Patient_ID'] <- 'gse156652_Pt3'
+scRNA@meta.data[which(scRNA@meta.data$Patient_ID == 'P4'),'Patient_ID'] <- 'gse156652_Pt4'
+scRNA@meta.data[which(scRNA@meta.data$Patient_ID == 'P5'),'Patient_ID'] <- 'gse156652_Pt5'
+scRNA@meta.data[which(scRNA@meta.data$Patient_ID == 'P6'),'Patient_ID'] <- 'gse156652_Pt6'
+scRNA@meta.data[which(scRNA@meta.data$Patient_ID == 'P7'),'Patient_ID'] <- 'gse156652_Pt7'
+scRNA@meta.data[which(scRNA@meta.data$Patient_ID == 'P8'),'Patient_ID'] <- 'gse156652_Pt8'
+scRNA@meta.data[which(scRNA@meta.data$Patient_ID == 'P9'),'Patient_ID'] <- 'gse156652_Pt9'
+scRNA@meta.data[which(scRNA@meta.data$Patient_ID == 'HN1'),'Patient_ID'] <- 'gse156652_HN1'
+gse156652 <- scRNA
+saveRDS(gse156652, file = 'gse156652.rds')
+
+#Load GSE189715
+setwd('/Users/alunia/RData/Public HCC/189175')
+a <- Matrix::readMM('GSE189175_counts_matrix.mtx.gz')
+b <- read.table("GSE189175_counts_features.tsv.gz")
+c <- read.table("GSE189175_counts_barcodes.tsv.gz")
+d <- read.table("GSE189175_meta_data.tsv.gz")
+sce.meta <- data.frame(Tissue=d$Tissue,row.names = rownames(d), Sample_ID = d$SampleID, Patient_ID = d$Patient, Etiology = d$Condition)
+rownames(a) <- b$V2
+colnames(a) <- c[[1]]
+if (!inherits(a, "dgCMatrix")) a <- as(a, "dgCMatrix")
+genes <- rownames(a)
+tot   <- Matrix::rowSums(a)
+best_index <- tapply(seq_along(genes), genes, function(ix) ix[ which.max(tot[ix]) ])
+keep <- logical(nrow(a)); keep[unlist(best_index, use.names = FALSE)] <- TRUE
+a_best <- a[keep, , drop = FALSE]
+scRNA = CreateSeuratObject(counts=a_best,
+                           meta.data = sce.meta,
+                           min.cells = 3,
+                           min.features = 50)
+scRNA$Timing <- 'Baseline'
+scRNA$Batch <- '189715'
+scRNA$Treatment <- 'None'
+scRNA@meta.data[which(scRNA@meta.data$Tissue == 'Tumor'),'Tissue'] <- 'HCC'
+scRNA@meta.data[which(scRNA@meta.data$Tissue == 'AdjNonTumor'),'Tissue'] <- 'Adjacent Liver'
+scRNA@meta.data[which(scRNA@meta.data$Patient_ID == '1'),'Patient_ID'] <- 'gse189715_Pt1'
+scRNA@meta.data[which(scRNA@meta.data$Patient_ID == '2'),'Patient_ID'] <- 'gse189715_Pt2'
+scRNA@meta.data[which(scRNA@meta.data$Patient_ID == '3'),'Patient_ID'] <- 'gse189715_Pt3'
+gse189715 <- scRNA
+
+#Load GSE189903
+setwd('/Users/alunia/RData/Public HCC/189903/Human HCC vs adjacent GSE189903')
+a <- Matrix::readMM('GSE189903_matrix.mtx')
+b <- read.table("GSE189903_genes.tsv.gz")
+c <- read.table("GSE189903_barcodes.tsv.gz")
+rownames(a) <- b$V2
+colnames(a) <- c[[1]]
+anyDuplicated(rownames(a))
+if (!inherits(a, "dgCMatrix")) a <- as(a, "dgCMatrix")
+genes <- rownames(a)
+tot   <- Matrix::rowSums(a)
+best_index <- tapply(seq_along(genes), genes, function(ix) ix[ which.max(tot[ix]) ])
+keep <- logical(nrow(a)); keep[unlist(best_index, use.names = FALSE)] <- TRUE
+a_best <- a[keep, , drop = FALSE]
+d <- read.csv('GSE189903_Info.csv')
+sce.meta <- data.frame(Tissue=d$Tissue,row.names = d$Barcode, Sample_ID = d$Sample)
+scRNA = CreateSeuratObject(counts=a_best,
+                           meta.data = sce.meta,
+                           min.cells = 3,
+                           min.features = 50)
+scRNA <- subset(scRNA, subset = Sample_ID %in% c('1HB','1HN','1HT1','1HT2','1HT3',
+                                                 '2HB','2HN','2HT1','2HT2','2HT3',
+                                                 '3HB','3HN','3HT1','3HT2','3HT3',
+                                                 '4HB','4HN','4HT1','4HT2','4HT3'))
+scRNA@meta.data[which(scRNA@meta.data$Tissue == 'Tumour'),'Tissue'] <- 'HCC'
+scRNA@meta.data[which(scRNA@meta.data$Tissue == 'Normal'),'Tissue'] <- 'Adjacent Liver'
+scRNA@meta.data[which(scRNA@meta.data$Tissue == 'Normal'),'Patient_ID'] <- 'gse189903_Pt1'
+scRNA@meta.data[which(scRNA@meta.data$Sample_ID %in% c('1HB','1HN','1HT1','1HT2','1HT3')),'Patient_ID'] <- 'gse189903_Pt1'
+scRNA@meta.data[which(scRNA@meta.data$Sample_ID %in% c('2HB','2HN','2HT1','2HT2','2HT3')),'Patient_ID'] <- 'gse189903_Pt2'
+scRNA@meta.data[which(scRNA@meta.data$Sample_ID %in% c('3HB','3HN','3HT1','3HT2','3HT3')),'Patient_ID'] <- 'gse189903_Pt2'
+scRNA@meta.data[which(scRNA@meta.data$Sample_ID %in% c('4HB','4HN','4HT1','4HT2','4HT3')),'Patient_ID'] <- 'gse189903_Pt2'
+scRNA$Timing <- 'Baseline'
+scRNA$Batch <- '189903'
+scRNA$Treatment <- 'None'
+scRNA$Etiology <- 'Unknown'
+gse189903 <- scRNA
+
+
+#Load GSE202642
+setwd('/Users/alunia/RData/Public HCC/202642')
+a <- Matrix::readMM('GSE202642_matrix.mtx.gz')
+b <- read.table("GSE202642_features.tsv.gz")
+c <- read.table("GSE202642_barcodes.tsv.gz")
+
+
+
+
+#Load GSE206325
+setwd('/Users/alunia/RData/Public HCC/206325/GSE206325 DC CD4 in HCC')
+library(Seurat)
+library(SingleCellExperiment)
+library(Matrix)
+c <- read.csv('GSE206325_sample_annots_Liver_Treated_patients.csv.gz')
+scRNA <- load('GSE206325_data_SingleCellExperiment_object.Rda')
+avail <- assayNames(sce)
+choice <- intersect(c("counts","raw","X","logcounts"), avail)
+if (length(choice) == 0) stop("No usable assay in SCE (looked for: counts/raw/X/logcounts).")
+use_assay <- choice[1]
+mat <- assay(sce, use_assay)
+if (!inherits(mat, "dgCMatrix")) mat <- as(mat, "CsparseMatrix")
+meta <- as.data.frame(colData(sce))
+sce.meta <- data.frame(Sample_ID=meta$cell_to_sample_ID,row.names = meta$barcodes)
+sce.meta$Sample_ID <- as.character(sce.meta$Sample_ID)
+c$sample_ID        <- as.character(c$sample_ID)
+c$patient_ID       <- as.character(c$patient_ID)
+c$tissue <- as.character(c$tissue)
+idx <- match(sce.meta$Sample_ID, c$sample_ID)
+sce.meta$Patient_ID <- c$patient_ID[idx]
+sce.meta$Tissue <- c$tissue[idx]
+scRNA <- CreateSeuratObject(counts=mat,
+                            meta.data = sce.meta,
+                            min.cells = 3,
+                            min.features = 50)
+scRNA$Timing <- 'Post'
+scRNA$Batch <- '206325'
+scRNA$Treatment <- 'PD-1'
+scRNA@meta.data[which(scRNA@meta.data$Tissue == 'Normal'),'Tissue'] <- 'Adjacent Liver'
+scRNA@meta.data[which(scRNA@meta.data$Tissue == 'Tumor'),'Tissue'] <- 'HCC'
+scRNA@meta.data[which(scRNA@meta.data$Patient_ID == '1001'),'Etiology'] <- 'HCV'
+scRNA@meta.data[which(scRNA@meta.data$Patient_ID == '1001'),'Response'] <- 'Non-Responser'
+scRNA@meta.data[which(scRNA@meta.data$Patient_ID == '1003'),'Etiology'] <- 'HBV'
+scRNA@meta.data[which(scRNA@meta.data$Patient_ID == '1003'),'Response'] <- 'Non-Responser'
+scRNA@meta.data[which(scRNA@meta.data$Patient_ID == '1004'),'Etiology'] <- 'NASH'
+scRNA@meta.data[which(scRNA@meta.data$Patient_ID == '1004'),'Response'] <- 'Non-Responser'
+scRNA@meta.data[which(scRNA@meta.data$Patient_ID == '1005'),'Etiology'] <- 'None'
+scRNA@meta.data[which(scRNA@meta.data$Patient_ID == '1005'),'Response'] <- 'Non-Responser'
+scRNA@meta.data[which(scRNA@meta.data$Patient_ID == '1006'),'Etiology'] <- 'ASH'
+scRNA@meta.data[which(scRNA@meta.data$Patient_ID == '1006'),'Response'] <- 'Responser'
+scRNA@meta.data[which(scRNA@meta.data$Patient_ID == '1012'),'Etiology'] <- 'HBV'
+scRNA@meta.data[which(scRNA@meta.data$Patient_ID == '1012'),'Response'] <- 'Non-Responser'
+scRNA@meta.data[which(scRNA@meta.data$Patient_ID == '1014'),'Etiology'] <- 'HBV'
+scRNA@meta.data[which(scRNA@meta.data$Patient_ID == '1014'),'Response'] <- 'Responser'
+scRNA@meta.data[which(scRNA@meta.data$Patient_ID == '1017'),'Etiology'] <- 'HBV'
+scRNA@meta.data[which(scRNA@meta.data$Patient_ID == '1017'),'Response'] <- 'Responser'
+scRNA@meta.data[which(scRNA@meta.data$Patient_ID == '1021'),'Etiology'] <- 'HCV'
+scRNA@meta.data[which(scRNA@meta.data$Patient_ID == '1021'),'Response'] <- 'Non-Responser'
+scRNA@meta.data[which(scRNA@meta.data$Patient_ID == '1023'),'Etiology'] <- 'ASH'
+scRNA@meta.data[which(scRNA@meta.data$Patient_ID == '1023'),'Response'] <- 'Responser'
+scRNA@meta.data[which(scRNA@meta.data$Patient_ID == '1025'),'Etiology'] <- 'HCV'
+scRNA@meta.data[which(scRNA@meta.data$Patient_ID == '1025'),'Response'] <- 'Non-Responser'
+scRNA@meta.data[which(scRNA@meta.data$Patient_ID == '1029'),'Etiology'] <- 'HBV'
+scRNA@meta.data[which(scRNA@meta.data$Patient_ID == '1029'),'Response'] <- 'Non-Responser'
+scRNA@meta.data[which(scRNA@meta.data$Patient_ID == '1030'),'Etiology'] <- 'HBV'
+scRNA@meta.data[which(scRNA@meta.data$Patient_ID == '1030'),'Response'] <- 'Non-Responser'
+scRNA@meta.data[which(scRNA@meta.data$Patient_ID == '1031'),'Etiology'] <- 'None'
+scRNA@meta.data[which(scRNA@meta.data$Patient_ID == '1031'),'Response'] <- 'Non-Responser'
+scRNA@meta.data[which(scRNA@meta.data$Patient_ID == '1032'),'Etiology'] <- 'HBV'
+scRNA@meta.data[which(scRNA@meta.data$Patient_ID == '1032'),'Response'] <- 'Non-Responser'
+scRNA@meta.data[which(scRNA@meta.data$Patient_ID == '1037'),'Etiology'] <- 'HCV'
+scRNA@meta.data[which(scRNA@meta.data$Patient_ID == '1037'),'Response'] <- 'Responser'
+scRNA@meta.data[which(scRNA@meta.data$Patient_ID == '1039'),'Etiology'] <- 'NASH'
+scRNA@meta.data[which(scRNA@meta.data$Patient_ID == '1039'),'Response'] <- 'Non-Responser'
+scRNA@meta.data[which(scRNA@meta.data$Patient_ID == '104'),'Etiology'] <- 'HBV'
+scRNA@meta.data[which(scRNA@meta.data$Patient_ID == '104'),'Response'] <- 'Non-Responser'
+scRNA@meta.data[which(scRNA@meta.data$Patient_ID == '1040'),'Etiology'] <- 'HCV'
+scRNA@meta.data[which(scRNA@meta.data$Patient_ID == '1040'),'Response'] <- 'Non-Responser'
+scRNA@meta.data[which(scRNA@meta.data$Patient_ID == '1041'),'Etiology'] <- 'NASH'
+scRNA@meta.data[which(scRNA@meta.data$Patient_ID == '1041'),'Response'] <- 'Responser'
+scRNA@meta.data[which(scRNA@meta.data$Patient_ID == '106'),'Etiology'] <- 'HCV'
+scRNA@meta.data[which(scRNA@meta.data$Patient_ID == '106'),'Response'] <- 'Responser'
+scRNA@meta.data[which(scRNA@meta.data$Patient_ID == '121'),'Etiology'] <- 'HBV'
+scRNA@meta.data[which(scRNA@meta.data$Patient_ID == '121'),'Response'] <- 'Non-Responser'
+scRNA@meta.data[which(scRNA@meta.data$Patient_ID == '124'),'Etiology'] <- 'HCV'
+scRNA@meta.data[which(scRNA@meta.data$Patient_ID == '124'),'Response'] <- 'Non-Responser'
+scRNA@meta.data[which(scRNA@meta.data$Patient_ID == '57'),'Etiology'] <- 'HCV NASH'
+scRNA@meta.data[which(scRNA@meta.data$Patient_ID == '57'),'Response'] <- 'Non-Responser'
+gse206325 <- scRNA
+saveRDS(gse206325, file = 'gse206325.rds')
+
+#Load GSE210679
+setwd('/Users/alunia/RData/Public HCC/210679/GSE210679_RAW/GSM6435354_scRNAseq')
+a <- Matrix::readMM('matrix.mtx.gz')
+b <- read.table("features.tsv.gz")
+c <- read.table("barcodes.tsv.gz")
+rownames(a) <- b$V2
+colnames(a) <- c[[1]]
+if (!inherits(a, "dgCMatrix")) a <- as(a, "dgCMatrix")
+genes <- rownames(a)
+tot   <- Matrix::rowSums(a)
+best_index <- tapply(seq_along(genes), genes, function(ix) ix[ which.max(tot[ix]) ])
+keep <- logical(nrow(a)); keep[unlist(best_index, use.names = FALSE)] <- TRUE
+a_best <- a[keep, , drop = FALSE]
+scRNA = CreateSeuratObject(counts=a_best,
+                           min.cells = 3,
+                           min.features = 50)
+scRNA$Timing <- 'Baseline'
+scRNA$Batch <- '210679'
+scRNA$Treatment <- 'None'
+scRNA$Etiology <- 'Unknown'
+scRNA$Tissue <- 'HCC'
+scRNA$Patient_ID <- 'gse210679_Pt1'
+gse210679 <- scRNA
+saveRDS(gse210679, file = 'gse210679.rds')
+
+#Load GSE235863
+library(zellkonverter)
+library(SingleCellExperiment)
+library(Seurat)
+setwd('/Users/alunia/RData/Public HCC/235863')
+scRNA <- readH5AD("GSE235863_nine_patients_scRNAseq_cd45_raw_counts.h5ad")
+assayNames(scRNA)
+assay(scRNA, "counts") <- assay(scRNA, "X")
+scRNA <- as.Seurat(scRNA, counts = "counts", data = NULL)
+scRNA@meta.data <- scRNA@meta.data[,c(1:6)]
+colnames(scRNA@meta.data)[colnames(scRNA@meta.data) == "tissue"] <- "Tissue"
+colnames(scRNA@meta.data)[colnames(scRNA@meta.data) == "nCount_originalexp"] <- "nCount_RNA"
+colnames(scRNA@meta.data)[colnames(scRNA@meta.data) == "nFeature_originalexp"] <- "nFeature_RNA"
+colnames(scRNA@meta.data)[colnames(scRNA@meta.data) == "sample"] <- "Sample_ID"
+colnames(scRNA@meta.data)[colnames(scRNA@meta.data) == "patient"] <- "Patient_ID"
+scRNA$Patient_ID <- as.character(scRNA$Patient_ID)
+scRNA@meta.data[which(scRNA@meta.data$Patient_ID == 'P1'),'Patient_ID'] <- 'gse235863_Pt1'
+scRNA@meta.data[which(scRNA@meta.data$Patient_ID == 'P5'),'Patient_ID'] <- 'gse235863_Pt5'
+scRNA@meta.data[which(scRNA@meta.data$Patient_ID == 'P11'),'Patient_ID'] <- 'gse235863_Pt11'
+scRNA@meta.data[which(scRNA@meta.data$Patient_ID == 'P15'),'Patient_ID'] <- 'gse235863_Pt15'
+scRNA@meta.data[which(scRNA@meta.data$Patient_ID == 'P18'),'Patient_ID'] <- 'gse235863_Pt18'
+scRNA@meta.data[which(scRNA@meta.data$Patient_ID == 'P26'),'Patient_ID'] <- 'gse235863_Pt26'
+scRNA@meta.data[which(scRNA@meta.data$Patient_ID == 'P27'),'Patient_ID'] <- 'gse235863_Pt27'
+scRNA@meta.data[which(scRNA@meta.data$Patient_ID == 'P51'),'Patient_ID'] <- 'gse235863_Pt51'
+scRNA@meta.data[which(scRNA@meta.data$Patient_ID == 'P52'),'Patient_ID'] <- 'gse235863_Pt52'
+scRNA$Tissue <- as.character(scRNA$Tissue)
+scRNA@meta.data[which(scRNA@meta.data$Tissue == 'P'),'Tissue'] <- 'Blood'
+scRNA@meta.data[which(scRNA@meta.data$Tissue == 'T'),'Tissue'] <- 'HCC'
+scRNA@meta.data[which(scRNA@meta.data$Sample_ID %in% c('P1-pre-P','P5-pre-P','P5-pre-T',
+                                                       'P11-pre-P','P11-pre-T','P15-pre-P',
+                                                       'P15-pre-T','P18-pre-P','P18-pre-T',
+                                                       'P26-pre-P','P26-pre-T','P27-pre-P',
+                                                       'P27-pre-T')),'Timing'] <- 'Baseline'
+scRNA@meta.data[which(scRNA@meta.data$Sample_ID %in% c('P1-post-P','P1-post-T','P5-post-P',
+                                                       'P5-post-T','P11-post-P','P11-post-T',
+                                                       'P15-post-P','P18-post-P','P18-post-T',
+                                                       'P26-post-P','P26-post-T','P27-post-P',
+                                                       'P27-post-T','P51-post-P','P51-post-T',
+                                                       'P52-post-P','P52-post-T')),'Timing'] <- 'Post'
+scRNA$Batch <- '235863'
+scRNA$Etiology <- 'HBV'
+scRNA@meta.data[which(scRNA@meta.data$Patient_ID %in% c('gse235863_Pt5','gse235863_Pt11','gse235863_Pt18','gse235863_Pt27')),'Response'] <- 'Responser'
+scRNA@meta.data[which(scRNA@meta.data$Patient_ID %in% c('gse235863_Pt1','gse235863_Pt15','gse235863_Pt26','gse235863_Pt51','gse235863_Pt52')),'Response'] <- 'Non-Responser'
+scRNA$Treatment <- 'PD1+Lenvatinib'
+gse235863 <- scRNA
+Assays(gse235863)
+gse235863[["RNA"]] <- gse235863[["originalexp"]]
+DefaultAssay(gse235863) <- "RNA"
+gse235863[["originalexp"]] <- NULL
+saveRDS(gse235863, file = 'gse235863.rds')
+
+
+#Load LeuvenData
+setwd('/Users/alunia/RData/IMbrave 150 scRNAseq/Raw data/HCC_data_VIB_CCB_portal/processed_feature_bc_matrix')
+scRNA <- readRDS('scRNA.rds')
+colnames(scRNA@meta.data)[colnames(scRNA@meta.data) == "Tumour_ID"] <- "Sample_ID"
+scRNA@meta.data[which(scRNA@meta.data$Response == 'DeathBeforeImaging'),'Response'] <- 'NonResponder'
+scRNA@meta.data[which(scRNA@meta.data$Treatment == 'atezo+bev'),'Treatment'] <- 'A+B'
+scRNA@meta.data[which(scRNA@meta.data$Treatment == 'ICP'),'Treatment'] <- 'PD-1/PD-L1'
+scRNA@meta.data[which(scRNA@meta.data$Treatment == 'atezo+cabo'),'Treatment'] <- 'None'
+scRNA@meta.data <- scRNA@meta.data[,c(1:7)]
+scRNA$Timing <- 'Baseline'
+scRNA$Batch <- 'Leuven'
+scRNA$Etiology <- 'Unknown'
+scRNA$Tissue <- 'HCC'
+Leuven <- scRNA
+saveRDS(Leuven, file = 'Leuven.rds')
+
+##################################
+#Final Loading and check
+gse140228_1[["RNA"]]@layers$data <- NULL
+gse140228_1[["RNA"]]@layers$scale.data <- NULL
+gse140228_2[["RNA"]]@layers$scale.data <- NULL
+gse140228_2[["RNA"]]@layers$data <- NULL
+gse140228_1$Sample_ID <-gse140228_1$Patient_ID
+gse140228_2$Sample_ID <-gse140228_2$Patient_ID
+gse146115$Sample_ID <-gse146115$Patient_ID
+gse149614$Sample_ID <-gse149614$Patient_ID
+gse154906$Sample_ID <-gse154906$Patient_ID
+gse210679$Sample_ID <-gse210679$Patient_ID
+gse206325@meta.data[which(gse206325@meta.data$Response == 'Responser'),'Response'] <- 'Responder'
+gse206325@meta.data[which(gse206325@meta.data$Response == 'Non-Responser'),'Response'] <- 'NonResponder'
+gse235863@meta.data[which(gse235863@meta.data$Response == 'Responser'),'Response'] <- 'Responder'
+gse235863@meta.data[which(gse235863@meta.data$Response == 'Non-Responser'),'Response'] <- 'NonResponder'
+gse206325@meta.data[which(gse206325@meta.data$Patient_ID == '1001'),'Patient_ID'] <- 'gse206325_Pt1001'
+gse206325@meta.data[which(gse206325@meta.data$Patient_ID == '1003'),'Patient_ID'] <- 'gse206325_Pt1003'
+gse206325@meta.data[which(gse206325@meta.data$Patient_ID == '1004'),'Patient_ID'] <- 'gse206325_Pt1004'
+gse206325@meta.data[which(gse206325@meta.data$Patient_ID == '1005'),'Patient_ID'] <- 'gse206325_Pt1005'
+gse206325@meta.data[which(gse206325@meta.data$Patient_ID == '1006'),'Patient_ID'] <- 'gse206325_Pt1006'
+gse206325@meta.data[which(gse206325@meta.data$Patient_ID == '1012'),'Patient_ID'] <- 'gse206325_Pt1012'
+gse206325@meta.data[which(gse206325@meta.data$Patient_ID == '1014'),'Patient_ID'] <- 'gse206325_Pt1014'
+gse206325@meta.data[which(gse206325@meta.data$Patient_ID == '1017'),'Patient_ID'] <- 'gse206325_Pt1017'
+gse206325@meta.data[which(gse206325@meta.data$Patient_ID == '1021'),'Patient_ID'] <- 'gse206325_Pt1021'
+gse206325@meta.data[which(gse206325@meta.data$Patient_ID == '1023'),'Patient_ID'] <- 'gse206325_Pt1023'
+gse206325@meta.data[which(gse206325@meta.data$Patient_ID == '1025'),'Patient_ID'] <- 'gse206325_Pt1025'
+gse206325@meta.data[which(gse206325@meta.data$Patient_ID == '1029'),'Patient_ID'] <- 'gse206325_Pt1029'
+gse206325@meta.data[which(gse206325@meta.data$Patient_ID == '1030'),'Patient_ID'] <- 'gse206325_Pt1030'
+gse206325@meta.data[which(gse206325@meta.data$Patient_ID == '1031'),'Patient_ID'] <- 'gse206325_Pt1031'
+gse206325@meta.data[which(gse206325@meta.data$Patient_ID == '1032'),'Patient_ID'] <- 'gse206325_Pt1032'
+gse206325@meta.data[which(gse206325@meta.data$Patient_ID == '1037'),'Patient_ID'] <- 'gse206325_Pt1037'
+gse206325@meta.data[which(gse206325@meta.data$Patient_ID == '104'),'Patient_ID'] <- 'gse206325_Pt104'
+gse206325@meta.data[which(gse206325@meta.data$Patient_ID == '1040'),'Patient_ID'] <- 'gse206325_Pt1040'
+gse206325@meta.data[which(gse206325@meta.data$Patient_ID == '1041'),'Patient_ID'] <- 'gse206325_Pt1041'
+gse206325@meta.data[which(gse206325@meta.data$Patient_ID == '106'),'Patient_ID'] <- 'gse206325_Pt106'
+gse206325@meta.data[which(gse206325@meta.data$Patient_ID == '121'),'Patient_ID'] <- 'gse206325_Pt121'
+gse206325@meta.data[which(gse206325@meta.data$Patient_ID == '124'),'Patient_ID'] <- 'gse206325_Pt124'
+gse206325@meta.data[which(gse206325@meta.data$Patient_ID == '57'),'Patient_ID'] <- 'gse206325_Pt57'
+
+
+########################################################################################################################################
+##################################################Gene Symbol alignment#################################################################
+suppressPackageStartupMessages({
+  library(Seurat)
+  library(Matrix)
+  library(AnnotationDbi)
+  library(org.Hs.eg.db)  # for human; use org.Mm.eg.db for mouse
+})
+# sparse row-aggregation helper (no Matrix.utils needed)
+.sparse_rowsum_by_group <- function(mat, group_ids) {
+  stopifnot(nrow(mat) == length(group_ids))
+  f <- factor(group_ids, levels = unique(group_ids))
+  G <- Matrix::sparseMatrix(i = seq_along(f), j = as.integer(f), x = 1,
+                            dims = c(length(f), nlevels(f)))
+  methods::as(Matrix::t(G) %*% mat, "dgCMatrix")
+}
+# (optional) canonicalize common no-dash MT aliases (protein-coding & rRNA)
+.canonize_mt_alias <- function(sym) {
+  # map e.g. "MTCO1" -> "MT-CO1", "MTATP6" -> "MT-ATP6", "MTRNR1" -> "MT-RNR1", etc.
+  patterns <- c("CO1","CO2","CO3","ND1","ND2","ND3","ND4","ND4L","ND5","ND6",
+                "ATP6","ATP8","CYB","RNR1","RNR2")
+  for (p in patterns) {
+    sym <- sub(paste0("^MT", p, "$"), paste0("MT-", p), sym, ignore.case = FALSE)
+  }
+  sym
+}
+# Convert SYMBOL -> Ensembl (keep MT genes by symbol), counts-only, v5-safe
+to_ensembl_keepMT <- function(seu, assay = "RNA", keep_unmapped = TRUE, project = NULL) {
+  stopifnot(assay %in% names(seu@assays))
+  DefaultAssay(seu) <- assay
+  # keep counts layer only (avoid layer mismatches)
+  seu <- DietSeurat(
+    seu,
+    assays = assay,
+    layers = setNames(list("counts"), assay),
+    dimreducs = NULL,
+    graphs = NULL
+  )
+  mat <- GetAssayData(seu, assay = assay, layer = "counts")
+  if (!inherits(mat, "dgCMatrix")) mat <- as(mat, "CsparseMatrix")
+  syms <- rownames(mat)
+  # Canonicalize obvious no-dash MT aliases first
+  syms2 <- vapply(syms, .canonize_mt_alias, character(1))
+  # Identify MT genes: most official human MT genes start with "MT-"
+  is_mt <- grepl("^MT-", syms2)
+  # Map non-MT symbols to Ensembl
+  ens <- rep(NA_character_, length(syms2))
+  if (any(!is_mt)) {
+    ens[!is_mt] <- mapIds(org.Hs.eg.db,
+                          keys = syms2[!is_mt],
+                          keytype = "SYMBOL",
+                          column  = "ENSEMBL",
+                          multiVals = "first")
+  }
+  # Build grouping IDs:
+  #  - MT genes: keep their (canonicalized) SYMBOL so they persist
+  #  - non-MT genes: use Ensembl if available, else UNMAPPED_SYMBOL:<symbol>
+  grp <- character(length(syms2))
+  grp[is_mt] <- syms2[is_mt]
+  grp[!is_mt] <- ens[!is_mt]
+  if (keep_unmapped) {
+    idx_na <- which(!is_mt & is.na(grp))
+    if (length(idx_na)) grp[idx_na] <- paste0("UNMAPPED_SYMBOL:", syms2[idx_na])
+  } else {
+    keep <- is_mt | (!is.na(grp))
+    mat  <- mat[keep, , drop = FALSE]
+    grp  <- grp[keep]
+    syms2 <- syms2[keep]
+  }
+  # Aggregate duplicates by target id (Ensembl or MT symbol)
+  mat_agg <- .sparse_rowsum_by_group(mat, grp)
+  rownames(mat_agg) <- unique(grp)
+  seu[[assay]] <- CreateAssayObject(counts = mat_agg)
+  if (!is.null(project)) seu@project.name <- project
+  # store mapping for audit
+  seu@misc$symbol_to_target <- data.frame(
+    original_symbol = syms,
+    canonical_symbol = syms2,
+    target_id = grp,
+    is_mt = is_mt,
+    stringsAsFactors = FALSE
+  )
+  seu
+}
+objs <- list(
+  Leuven, gse112271, gse125449, gse140228_1, gse140228_2,
+  gse146115, gse149614, gse151530, gse154906, gse156652,
+  gse189715, gse189903, gse206325, gse210679, gse235863
+)
+ids  <- c("Leuven","GSE112271","GSE125449","GSE140228_1","GSE140228_2",
+          "GSE146115","GSE149614","GSE151530","GSE154906","GSE156652",
+          "GSE189715","GSE189903","GSE206325","GSE210679","GSE235863")
+objs_ens_mt <- Map(function(o, nm) {
+  to_ensembl_keepMT(o, assay = "RNA", keep_unmapped = TRUE, project = nm)
+}, objs, ids)
+merged <- merge(
+  x = objs_ens_mt[[1]],
+  y = objs_ens_mt[-1],
+  add.cell.ids = ids,
+  project = "Merged_Ensembl_MT"
+)
+
+keep <- !grepl("^UNMAPPED-SYMBOL:", rownames(merged))
+# Subset the Seurat object to mapped features only
+merged_clean <- merged[keep, ]
+
+
+
+assay_use <- "RNA"
+DefaultAssay(merged_clean) <- assay_use
+ens_ids <- rownames(merged_clean)
+symbols <- mapIds(org.Hs.eg.db, keys = ens_ids, keytype = "ENSEMBL",
+                  column = "SYMBOL", multiVals = "first")
+symbols2 <- ifelse(is.na(symbols) | symbols == "", ens_ids, symbols)
+mat <- tryCatch(
+  GetAssayData(merged_clean, assay = assay_use, layer = "counts"),
+  error = function(e) GetAssayData(merged_clean, assay = assay_use, slot = "counts")
+)
+if (!inherits(mat, "dgCMatrix")) mat <- as(mat, "CsparseMatrix")
+mat_sym <- .sparse_rowsum_by_group(mat, symbols2)
+rownames(mat_sym) <- unique(symbols2)  # set rownames to symbols
+
+
+
+merged_symbol <- CreateSeuratObject(
+  counts   = mat_sym,
+  meta.data = merged_clean@meta.data,
+  project   = "Merged_Symbol"
+)
+merged_symbol <- CreateSeuratObject(
+  counts   = mat_sym,
+  meta.data = merged_clean@meta.data,
+  project   = "Merged_Symbol"
+)
+scRNA <- merged_symbol
+rm(list = setdiff(ls(), "scRNA"))
+
+########################################################################################################################################
+############################################Cell clustering and annotation##############################################################
+
+
+scRNA[["percent.mt"]] <- PercentageFeatureSet(scRNA, pattern = "^MT-")
+scRNA <- subset(scRNA, subset = percent.mt < 15 & nCount_RNA < 50000)
+scRNA <- subset(scRNA, subset = nFeature_RNA > 200 & nFeature_RNA < 6000)
+scRNA <- NormalizeData(scRNA)
+scRNA <- FindVariableFeatures(scRNA, selection.method = "vst", nfeatures = 3000)
+scRNA <- ScaleData(scRNA)
+
+
+library(future)
+options(future.globals.maxSize = 80 * 1024^3)
+plan("multicore", workers = 4)
+scRNA <- RunPCA(scRNA, features = VariableFeatures(scRNA)) 
+scRNA <- FindNeighbors(scRNA, dims = 1:30, reduction = "pca")
+scRNA <- FindClusters(scRNA, resolution = 0.7, cluster.name = "unintegrated_clusters")
+scRNA <- RunUMAP(scRNA, dims = 1:30, reduction = "pca", reduction.name = "umap.unintegrated")
+DimPlot(scRNA, reduction = "umap.unintegrated",group.by = 'Batch')
+
+library(harmony)
+scRNA <- RunHarmony(scRNA, group.by.vars = "Batch")
+scRNA <- FindNeighbors(scRNA, reduction = "harmony", dims = 1:20)
+scRNA <- FindClusters(scRNA, resolution = 1.2, cluster.name = "harmony_clusters")
+scRNA <- RunUMAP(scRNA, reduction = "harmony", dims = 1:20, reduction.name = "umap.harmony")
+DimPlot(scRNA,reduction = "umap.harmony", group.by = 'Batch')
+
+
+scRNA@meta.data[which(scRNA@meta.data$harmony_clusters %in% 
+                        c('15','18','21','22','24','26','27','32','33','35','40','42',
+                          '43','45','47','50','52','53','54','55','63','64','65','67')),'Celltype'] <- 'Hepatocytes'
+scRNA@meta.data[which(scRNA@meta.data$harmony_clusters %in% 
+                        c('13','46','48','58')),'Celltype'] <- 'Endothelial'
+scRNA@meta.data[which(scRNA@meta.data$harmony_clusters %in% 
+                        c('25','57')),'Celltype'] <- 'Fibroblasts'
+scRNA@meta.data[which(scRNA@meta.data$harmony_clusters %in% 
+                        c('9','20','34','36','44','56','66')),'Celltype'] <- 'B'
+scRNA@meta.data[which(scRNA@meta.data$harmony_clusters %in% 
+                        c('7','12','14','16','28','31','37','39','51','59','60','62')),'Celltype'] <- 'Myeloid'
+scRNA@meta.data[which(scRNA@meta.data$harmony_clusters %in% 
+                        c('0','1','2','3','4','5','6','8','10','11','17',
+                          '23','29','30','38','41','49','68','69',
+                          '70','71','72','73','74')),'Celltype'] <- 'T and NK'
+scRNA@meta.data[which(scRNA@meta.data$harmony_clusters %in% 
+                        c('19','61')),'Celltype'] <- 'Proliferating'
+
+
+#########NK cell #############
+
+TNK <- subset(scRNA, subset = Celltype == 'T and NK')
+
+
+#Step 1 Select the cells which is either NCAM1+ or KLRF1+ or NCR1+
+assay_use <- DefaultAssay(TNK)
+genes_req <- c("NCR1","NCAM1","KLRF1")
+mat <- GetAssayData(TNK, assay = assay_use, layer = "counts")
+expr_mat <- mat[genes_req, , drop = FALSE]
+keep_cells <- colSums(expr_mat > 0) > 0
+NK1 <- subset(TNK, cells = colnames(TNK)[keep_cells])
+
+#Step 2 Remove the cells which is TRAC+ and either CD3D/E/G +
+cells_to_remove <- WhichCells(
+  NK1,
+  expression = TRAC > 0 & (CD3E > 0 | CD3D > 0 | CD3G > 0)
+)
+NK2 <- subset(NK1, cells = setdiff(Cells(NK1), cells_to_remove))
+rm(list = setdiff(ls(), "NK2"))
+
+#Step 3 Remove housekeeping features that are unexpectedly missed in some datasets
+assay_use <- "RNA"
+min_prop  <- 0.10        # “expressed” = >10% of cells (change if needed)
+min_cells_per_batch <- 50  # skip batches with too few cells (set to 0 to keep all)
+DefaultAssay(NK2) <- assay_use
+counts <- tryCatch(
+  GetAssayData(NK2, assay = assay_use, layer = "counts"),
+  error = function(e) GetAssayData(NK2, assay = assay_use, slot = "counts")
+)
+stopifnot(inherits(counts, "dgCMatrix"))
+batches <- sort(unique(NK2$Batch))
+get_prop <- function(b) {
+  cells_b <- colnames(NK2)[NK2$Batch == b]
+  if (length(cells_b) < min_cells_per_batch) return(rep(NA_real_, nrow(counts)))
+  mb <- counts[, cells_b, drop = FALSE]
+  Matrix::rowMeans(mb > 0)  # proportion of cells with >0 counts
+}
+prop_list <- lapply(batches, get_prop)
+prop_mat  <- do.call(cbind, prop_list)
+colnames(prop_mat) <- batches
+rownames(prop_mat) <- rownames(counts)
+zero_any     <- apply(prop_mat, 1, function(x) any(!is.na(x) & x == 0))
+express_any  <- apply(prop_mat, 1, function(x) any(!is.na(x) & x >= min_prop))
+suspect_idx  <- which(zero_any & express_any)
+props_df <- as.data.frame(prop_mat[suspect_idx, , drop = FALSE], stringsAsFactors = FALSE)
+props_pct <- round(100 * props_df, 2)
+missing_batches <- apply(props_df, 1, function(x) paste(batches[which(x == 0)], collapse = ","))
+express_batches <- apply(props_df, 1, function(x) paste(batches[which(x >= min_prop)], collapse = ","))
+result <- cbind(
+  data.frame(Gene = rownames(props_df), stringsAsFactors = FALSE),
+  props_pct
+)
+result$Missing_in_Batches <- missing_batches
+result$Expressed10_in  <- express_batches
+ord <- order(-vapply(strsplit(result$Missing_in_Batches, ","), length, integer(1)))
+result <- result[ord, ]
+genes_to_drop <- unique(result$Gene)
+keep <- setdiff(rownames(NK2), intersect(rownames(NK2), genes_to_drop))
+before <- nrow(NK2)
+NK3  <- NK2[keep, ]
+
+#Step 4 Clustering and final cleaning based on Feature distribution on UMAP
+NK3 <- NormalizeData(NK3)
+NK3 <- FindVariableFeatures(NK3)
+NK3 <- ScaleData(NK3)
+NK3 <- RunPCA(NK3)
+NK3 <- RunHarmony(NK3, group.by.vars = "Patient_ID")
+NK3 <- FindNeighbors(NK3, reduction = "harmony", dims = 1:15)
+NK3 <- FindClusters(NK3, resolution = 1.2, cluster.name = "harmony_clusters")
+NK3 <- RunUMAP(NK3,reduction = "harmony", dims = 1:20, reduction.name = "umap.harmony")
+NK4 <- subset(NK3, subset = !(harmony_clusters %in% c('10','11','13','18','20','21')))
+#Those are: MAIT(10), NKs with hepatocyte environment contamination(11,20)
+#CD8 T with NK contamination(13),CD4 T with NK contamination(18) ,NKs with IgG environment contamination
+rm(list = setdiff(ls(), "NK4"))
+NK4$Celltype <- "NK"
+NK4 <- NormalizeData(NK4)
+NK4 <- FindVariableFeatures(NK4)
+NK4 <- ScaleData(NK4)
+NK4 <- RunPCA(NK4)
+NK4 <- RunHarmony(NK4, group.by.vars = "Patient_ID")
+NK4 <- FindNeighbors(NK4, reduction = "harmony", dims = 1:15)
+NK4 <- FindClusters(NK4, resolution = 1.2, cluster.name = "harmony_clusters")
+NK4 <- RunUMAP(NK4,reduction = "harmony", dims = 1:15, reduction.name = "umap.harmony")
+NK4 <- subset(NK4, subset = !(harmony_clusters %in% c('11','16','17')))
+# Those are Low quality NK with low count and feature, leftover hepatocyte contaminated NK
+NK4$harmony_clusters <- as.character(NK4$harmony_clusters)
+NK4$seurat_clusters<- as.character(NK4$seurat_clusters)
+NK4@meta.data[which(NK4@meta.data$seurat_clusters == '12'),'harmony_clusters'] <- '11'
+NK4@meta.data[which(NK4@meta.data$seurat_clusters == '13'),'harmony_clusters'] <- '12'
+NK4@meta.data[which(NK4@meta.data$seurat_clusters == '14'),'harmony_clusters'] <- '13'
+NK4@meta.data[which(NK4@meta.data$seurat_clusters == '15'),'harmony_clusters'] <- '14'
+NK4@meta.data[which(NK4@meta.data$seurat_clusters == '12'),'seurat_clusters'] <- '11'
+NK4@meta.data[which(NK4@meta.data$seurat_clusters == '13'),'seurat_clusters'] <- '12'
+NK4@meta.data[which(NK4@meta.data$seurat_clusters == '14'),'seurat_clusters'] <- '13'
+NK4@meta.data[which(NK4@meta.data$seurat_clusters == '15'),'seurat_clusters'] <- '14'
+ordered_levels <- as.character(sort(as.numeric(unique(NK4$harmony_clusters))))
+NK4$harmony_clusters <- factor(NK4$harmony_clusters, levels = ordered_levels)
+NK4$seurat_clusters <- factor(NK4$seurat_clusters, levels = ordered_levels)
+Idents(NK4) <- NK4$harmony_clusters
+NK4@meta.data[which(NK4@meta.data$harmony_clusters %in% c('0','1','7','8')),'2ndCelltype'] <- 'NK_CD56'
+NK4@meta.data[which(NK4@meta.data$harmony_clusters %in% c('2','3','4','5','10','13')),'2ndCelltype'] <- 'NK_CD16'
+NK4@meta.data[which(NK4@meta.data$harmony_clusters %in% c('6','9','14')),'2ndCelltype'] <- 'NK_Tlike'
+NK4@meta.data[which(NK4@meta.data$harmony_clusters %in% c('11','12')),'2ndCelltype'] <- 'NK_ILC1'
+NK4$SecondCelltype <- NK4$`2ndCelltype`
+NK4$`2ndCelltype` <- NULL 
+NK4$CelltypeL2 <- NK4$SecondCelltype
+NK4$SecondCelltype <- NULL 
+NK4$harmony_clusters <- factor(NK4$harmony_clusters, levels = ordered_levels)
+NK4@meta.data[which(NK4@meta.data$harmony_clusters == '0'),'Celltype3'] <- 'NK_CD56_GZMK'
+NK4@meta.data[which(NK4@meta.data$harmony_clusters == '1'),'Celltype3'] <- 'NK_CD56_ICAM1'
+NK4@meta.data[which(NK4@meta.data$harmony_clusters == '7'),'Celltype3'] <- 'NK_CD56_KLRK1'
+NK4@meta.data[which(NK4@meta.data$harmony_clusters == '8'),'Celltype3'] <- 'NK_CD56_DNAJB4'
+NK4@meta.data[which(NK4@meta.data$harmony_clusters  == '12'),'Celltype3'] <- 'NK_Int-ILC1'
+NK4@meta.data[which(NK4@meta.data$harmony_clusters  == '11'),'Celltype3'] <- 'NK_ILC1'
+NK4@meta.data[which(NK4@meta.data$harmony_clusters  == '2'),'Celltype3'] <- 'NK_CD16_FGFBP2'
+NK4@meta.data[which(NK4@meta.data$harmony_clusters  == '3'),'Celltype3'] <- 'NK_CD16_CD55'
+NK4@meta.data[which(NK4@meta.data$harmony_clusters  == '4'),'Celltype3'] <- 'NK_CD16_HSPA1B'
+NK4@meta.data[which(NK4@meta.data$harmony_clusters  == '5'),'Celltype3'] <- 'NK_CD16_CD52'
+NK4@meta.data[which(NK4@meta.data$harmony_clusters  == '10'),'Celltype3'] <- 'NK_CD16_KLRC2'
+NK4@meta.data[which(NK4@meta.data$harmony_clusters  == '13'),'Celltype3'] <- 'NK_CD16_KLRK1'
+NK4@meta.data[which(NK4@meta.data$harmony_clusters  == '6'),'Celltype3'] <- 'NK_Tlike_CD56'
+NK4@meta.data[which(NK4@meta.data$harmony_clusters  == '9'),'Celltype3'] <- 'NK_Tlike_CD16'
+NK4@meta.data[which(NK4@meta.data$harmony_clusters  == '14'),'Celltype3'] <- 'NK_Tlike_HSPB1'
+
+
+
+#########T cell #############
+
+TNK1 <- readRDS('NK and T.rds')
+NK <- readRDS('NK_Clean.rds')
+
+cells_TNK1 <- colnames(TNK1)
+cells_NK   <- colnames(NK)
+cells_keep <- setdiff(cells_TNK1, cells_NK)
+T1 <- subset(TNK1, cells = cells_keep)
+
+T1 <- NormalizeData(T1)
+T1 <- FindVariableFeatures(T1)
+T1 <- ScaleData(T1)
+T1 <- RunPCA(T1)
+T1 <- RunHarmony(T1, group.by.vars = "Patient_ID")
+T1 <- FindNeighbors(T1, reduction = "harmony", dims = 1:15)
+T1 <- FindClusters(T1, resolution = 1.2, cluster.name = "harmony_clusters")
+T1 <- RunUMAP(T1,reduction = "harmony", dims = 1:20, reduction.name = "umap.harmony")
+
+cells_to_remove <- WhichCells(T1,expression = ALB > 0 & APOA1 > 0)
+T2 <- subset(T1, cells = setdiff(Cells(T1), cells_to_remove))
+cells_to_remove <- WhichCells(T2,expression = ALB > 0 & TTR > 0)
+T2 <- subset(T2, cells = setdiff(Cells(T2), cells_to_remove))
+cells_to_remove <- WhichCells(T2,expression = CD3E == 0 & CD3D == 0)
+T2 <- subset(T2, cells = setdiff(Cells(T2), cells_to_remove))
+T2 <- subset(T2, !(subset = harmony_clusters %in% c('1','18','19','20','23','27')))
+cells_to_remove <- WhichCells(T2,expression = NCAM1 > 0 & KLRF1 > 0)
+T2 <- subset(T2, cells = setdiff(Cells(T2), cells_to_remove))
+
+T2 <- NormalizeData(T2)
+T2 <- FindVariableFeatures(T2)
+T2 <- ScaleData(T2)
+T2 <- RunPCA(T2)
+T2 <- RunHarmony(T2, group.by.vars = "Patient_ID")
+T2 <- FindNeighbors(T2, reduction = "harmony", dims = 1:15)
+T2 <- FindClusters(T2, resolution = 1.2, cluster.name = "harmony_clusters")
+T2 <- RunUMAP(T2,reduction = "harmony", dims = 1:20, reduction.name = "umap.harmony")
+
+T3 <- subset(T2, !(subset = harmony_clusters %in% c('16','17','18')))
+#Remove Liver cell and NK cells
+T3$CelltypeL2 <- T3$Celltype
+T3$CelltypeL2[which(FetchData(T3, "CD8A") > 0 | FetchData(T3, "CD8B") > 0)] <- "T_CD8"
+T3$CelltypeL2[which(FetchData(T3, "CD4") > 0)] <- "T_CD4"
+T3$CelltypeL2[which(FetchData(T3, "CD4") > 0)] <- "T_CD4"
+T3$CelltypeL2[which(T3$harmony_clusters %in% c('1','13','17','19'))] <- 'T_InnateLike'
+T3$CelltypeL2[which(T3$harmony_clusters %in% c('0','2','3','4','5','9','20','21','22','24','25','26','27'))] <- 'T_CD8'
+T3$CelltypeL2[which(T3$CelltypeL2 %in% c('T and NK'))] <- 'T_CD4'
+
+CD8 <- subset(T3, subset = CelltypeL2 == 'T_CD8')
+CD4 <- subset(T3, subset = CelltypeL2 == 'T_CD4')
+MAIT <- subset(T3, subset = CelltypeL2 == 'T_InnateLike')
+
+
+CD8 <- NormalizeData(CD8)
+CD8 <- FindVariableFeatures(CD8)
+CD8 <- ScaleData(CD8)
+CD8 <- RunPCA(CD8)
+CD8 <- RunHarmony(CD8, group.by.vars = "Patient_ID")
+CD8 <- FindNeighbors(CD8, reduction = "harmony", dims = 1:15)
+CD8 <- FindClusters(CD8, resolution = 1.2, cluster.name = "harmony_clusters")
+CD8 <- RunUMAP(CD8,reduction = "harmony", dims = 1:20, reduction.name = "umap.harmony")
+
+CD4 <- NormalizeData(CD4)
+CD4 <- FindVariableFeatures(CD4)
+CD4 <- ScaleData(CD4)
+CD4 <- RunPCA(CD4)
+CD4 <- RunHarmony(CD4, group.by.vars = "Patient_ID")
+CD4 <- FindNeighbors(CD4, reduction = "harmony", dims = 1:15)
+CD4 <- FindClusters(CD4, resolution = 1.2, cluster.name = "harmony_clusters")
+CD4 <- RunUMAP(CD4,reduction = "harmony", dims = 1:20, reduction.name = "umap.harmony")
+
+MAIT <- NormalizeData(MAIT)
+MAIT <- FindVariableFeatures(MAIT)
+MAIT <- ScaleData(MAIT)
+MAIT <- RunPCA(MAIT)
+MAIT <- RunHarmony(MAIT, group.by.vars = "Patient_ID")
+MAIT <- FindNeighbors(MAIT, reduction = "harmony", dims = 1:15)
+MAIT <- FindClusters(MAIT, resolution = 1.2, cluster.name = "harmony_clusters")
+MAIT <- RunUMAP(MAIT,reduction = "harmony", dims = 1:20, reduction.name = "umap.harmony")
+
+CD8$Celltype3 <- CD8$CelltypeL2
+CD8$Celltype3[which(CD8$harmony_clusters %in% c('0','20','21'))] <- 'Temra_FGFBP2'
+CD8$Celltype3[which(CD8$harmony_clusters %in% c('6'))] <- 'CD8Tn_SELL'
+CD8$Celltype3[which(CD8$harmony_clusters %in% c('11','13','14','22'))] <- 'CD8Tcm_CCR7'
+CD8$Celltype3[which(CD8$harmony_clusters %in% c('9'))] <- 'CD8Tcm_HSPA1B'
+CD8$Celltype3[which(CD8$harmony_clusters %in% c('3'))] <- 'CD8Trm_ZNF683'
+CD8$Celltype3[which(CD8$harmony_clusters %in% c('7'))] <- 'CD8Tem_ZFP36'
+CD8$Celltype3[which(CD8$harmony_clusters %in% c('1','4','5','13','16','19','23'))] <- 'CD8Tem_GZMK'
+CD8$Celltype3[which(CD8$harmony_clusters %in% c('2','8','10','12','15','18'))] <- 'CD8Tex_PDCD1'
+CD8$Celltype3[which(CD8$harmony_clusters %in% c('17'))] <- 'CD8Treg_IL2RA'
+
+
+CD4 <- subset(CD4, !(subset = harmony_clusters %in% c('19','20','21','22')))
+CD4$Celltype3 <- CD4$CelltypeL2
+CD4$Celltype3[which(CD4$harmony_clusters %in% c('0','18'))] <- 'CD4Th_HSPA1A'
+CD4$Celltype3[which(CD4$harmony_clusters %in% c('3','17'))] <- 'CD4Tn_SELL'
+CD4$Celltype3[which(CD4$harmony_clusters %in% c('5','14','15'))] <- 'CD4Tcm_CD55'
+CD4$Celltype3[which(CD4$harmony_clusters %in% c('12'))] <- 'CD4Tcm_CCR4'
+CD4$Celltype3[which(CD4$harmony_clusters %in% c('1'))] <- 'CD4Th17_CTSH'
+CD4$Celltype3[which(CD4$harmony_clusters %in% c('7','10'))] <- 'CD4Tem_CCR6'
+CD4$Celltype3[which(CD4$harmony_clusters %in% c('2'))] <- 'CD4Tem_GZMK'
+CD4$Celltype3[which(CD4$harmony_clusters %in% c('9','16'))] <- 'CD4Tfh_CXCL13'
+CD4$Celltype3[which(CD4$harmony_clusters %in% c('6'))] <- 'CD4Tph_PDCD1'
+CD4$Celltype3[which(CD4$harmony_clusters %in% c('4','8','11'))] <- 'CD4Treg_TIGIT'
+CD4$Celltype3[which(CD4$harmony_clusters %in% c('13'))] <- 'CD4Treg_DNAJB1'
+
+
+MAIT <- subset(MAIT, !(subset = harmony_clusters %in% c('15','16')))
+MAIT$CelltypeL2 <- 'T_CD8'
+MAIT$CelltypeL2[which(MAIT$harmony_clusters %in% c('6','7','13','14'))] <- 'γδT'
+MAIT$Celltype3 <- MAIT$CelltypeL2
+MAIT$Celltype3[which(MAIT$harmony_clusters %in% c('0','1','2','8','9','12'))] <- 'CD8T_MAIT'
+MAIT$Celltype3[which(MAIT$harmony_clusters %in% c('10','11'))] <- 'γδT_γδ2'
+MAIT$Celltype3[which(MAIT$harmony_clusters %in% c('6','14'))] <- 'γδT_γδ1_FGCR3A'
+MAIT$Celltype3[which(MAIT$harmony_clusters %in% c('7','13'))] <- 'γδT_γδ1_XCL1'
+MAIT$Celltype3[which(MAIT$harmony_clusters %in% c('4'))] <- 'CD8Trm_ZNF683'
+MAIT$Celltype3[which(MAIT$harmony_clusters %in% c('3','5'))] <- 'CD8T_NKlike'
+
+#########Myeloid cell #############
+Myeloid <- subset(scRNA, subset = Celltype == 'Myeloid')
+#Preprocess including remove wired features and remove NA PT value
+genes_to_drop <- readRDS('genedrop.rds')
+keep <- setdiff(rownames(Myeloid), intersect(rownames(Myeloid), genes_to_drop))
+Myeloid1  <- Myeloid[keep, ]
+
+
+meta <- Myeloid1@meta.data
+# 1) Find cells where Patient_ID is missing (treat NA, empty string, or literal "NA" as missing)
+na_idx <- is.na(meta$Patient_ID) | meta$Patient_ID == "" | meta$Patient_ID == "NA"
+# 2) Inspect which Batch and Sample_ID those NA cells are from
+na_overview <- meta[na_idx, c("Batch", "Sample_ID", "Patient_ID")]
+# Quick counts by Batch/Sample_ID
+na_counts <- as.data.frame(na_overview) |>
+  dplyr::count(Batch, Sample_ID, name = "n")
+was_factor <- is.factor(Myeloid1$Patient_ID)
+Myeloid1$Patient_ID <- as.character(Myeloid1$Patient_ID)
+Myeloid1$Sample_ID  <- as.character(Myeloid1$Sample_ID)
+Myeloid1$Patient_ID[na_idx] <- Myeloid1$Sample_ID[na_idx] # Restore factor if it started as factor, and drop unused levels
+if (was_factor) {
+  Myeloid1$Patient_ID <- factor(Myeloid1$Patient_ID)
+}
+#Annotation 1st
+Myeloid1 <- NormalizeData(Myeloid1)
+Myeloid1 <- FindVariableFeatures(Myeloid1)
+Myeloid1 <- ScaleData(Myeloid1)
+Myeloid1 <- RunPCA(Myeloid1)
+Myeloid1 <- RunHarmony(Myeloid1, group.by.vars = "Patient_ID")
+Myeloid1 <- FindNeighbors(Myeloid1, reduction = "harmony", dims = 1:16)
+Myeloid1 <- FindClusters(Myeloid1, resolution = 1.2, cluster.name = "harmony_clusters")
+Myeloid1 <- RunUMAP(Myeloid1,reduction = "harmony", dims = 1:16, reduction.name = "umap.harmony")
+#Remove T cell 7,16,27 B cell 22 and Liver cell 9,23 and Proliferating cell 17 contamination
+Myeloid2 <- subset(Myeloid1, !(subset = harmony_clusters %in% c('7','9','16','17','22','23','27')))
+#Annotation 2st
+Myeloid2 <- NormalizeData(Myeloid2)
+Myeloid2 <- FindVariableFeatures(Myeloid2)
+Myeloid2 <- ScaleData(Myeloid2)
+Myeloid2 <- RunPCA(Myeloid2)
+Myeloid2 <- RunHarmony(Myeloid2, group.by.vars = "Patient_ID")
+Myeloid2 <- FindNeighbors(Myeloid2, reduction = "harmony", dims = 1:16)
+Myeloid2 <- FindClusters(Myeloid2, resolution = 1.2, cluster.name = "harmony_clusters")
+Myeloid2 <- RunUMAP(Myeloid2,reduction = "harmony", dims = 1:16, reduction.name = "umap.harmony")
+#Remove low quality cells with high Mt or low nCount
+Myeloid2 <- subset(Myeloid2, !(subset = harmony_clusters %in% c('6','8','19','20','21','22')))
+#Annotation cell subclusters
+#Monocyte
+Myeloid2@meta.data[which(Myeloid2@meta.data$harmony_clusters %in% c('1','3','5','7','9','13')),'CelltypeL2'] <- 'Monocyte'
+Myeloid2@meta.data[which(Myeloid2@meta.data$harmony_clusters == '3'),'Celltype3'] <- 'Monocyte_FCGR3A'
+Myeloid2@meta.data[which(Myeloid2@meta.data$harmony_clusters == '7'),'Celltype3'] <- 'Monocyte_DNAJB4'
+Myeloid2@meta.data[which(Myeloid2@meta.data$harmony_clusters %in% c('1','9')),'Celltype3'] <- 'Monocyte_S100A9'
+Myeloid2@meta.data[which(Myeloid2@meta.data$harmony_clusters == '5'),'Celltype3'] <- 'Monocyte_IL1B'
+Myeloid2@meta.data[which(Myeloid2@meta.data$harmony_clusters == '13'),'Celltype3'] <- 'Monocyte_CLEC12A'
+#DC
+Myeloid2@meta.data[which(Myeloid2@meta.data$harmony_clusters %in% c('4','10','12','15','17','18')),'CelltypeL2'] <- 'DC'
+Myeloid2@meta.data[which(Myeloid2@meta.data$harmony_clusters == '10'),'Celltype3'] <- 'cDC1_CLEC9A'
+Myeloid2@meta.data[which(Myeloid2@meta.data$harmony_clusters %in% c('4','12')),'Celltype3'] <- 'cDC2_CD1C'
+Myeloid2@meta.data[which(Myeloid2@meta.data$harmony_clusters == '15'),'Celltype3'] <- 'cDC2_DNAJB4'
+Myeloid2@meta.data[which(Myeloid2@meta.data$harmony_clusters == '18'),'Celltype3'] <- 'pDC_CLEC4C'
+Myeloid2@meta.data[which(Myeloid2@meta.data$harmony_clusters == '17'),'Celltype3'] <- 'DC_LAMP3'
+#Macrophage
+Myeloid2@meta.data[which(Myeloid2@meta.data$harmony_clusters %in% c('0','2','11','14','16')),'CelltypeL2'] <- 'Macrophage'
+Myeloid2@meta.data[which(Myeloid2@meta.data$harmony_clusters %in% c('0','16')),'Celltype3'] <- 'Macro_APOE'
+Myeloid2@meta.data[which(Myeloid2@meta.data$harmony_clusters == '2'),'Celltype3'] <- 'Macro_SPP1'
+Myeloid2@meta.data[which(Myeloid2@meta.data$harmony_clusters == '11'),'Celltype3'] <- 'Macro_CD5L'
+Myeloid2@meta.data[which(Myeloid2@meta.data$harmony_clusters == '14'),'Celltype3'] <- 'Macro_CXCL9'
+
+saveRDS(Myeloid2, file = 'Myeloid_Clean.rds')
+
+
+#########B cell #############
+keep <- setdiff(rownames(B), intersect(rownames(B), genes_to_drop))
+B1  <- B[keep, ]
+meta <- B1@meta.data
+na_idx <- is.na(meta$Patient_ID) | meta$Patient_ID == "" | meta$Patient_ID == "NA"
+na_overview <- meta[na_idx, c("Batch", "Sample_ID", "Patient_ID")]
+na_counts <- as.data.frame(na_overview) |>
+  dplyr::count(Batch, Sample_ID, name = "n")
+was_factor <- is.factor(B1$Patient_ID)
+B1$Patient_ID <- as.character(B1$Patient_ID)
+B1$Sample_ID  <- as.character(B1$Sample_ID)
+B1$Patient_ID[na_idx] <- B1$Sample_ID[na_idx] # Restore factor if it started as factor, and drop unused levels
+if (was_factor) {
+  B1$Patient_ID <- factor(B1$Patient_ID)
+}
+
+B1 <- NormalizeData(B1)
+B1 <- FindVariableFeatures(B1)
+B1 <- ScaleData(B1)
+B1 <- RunPCA(B1)
+B1 <- RunHarmony(B1, group.by.vars = "Patient_ID")
+ElbowPlot(B1)
+B1 <- FindNeighbors(B1, reduction = "harmony", dims = 1:15)
+B1 <- FindClusters(B1, resolution = 1.2, cluster.name = "harmony_clusters")
+B1 <- RunUMAP(B1,reduction = "harmony", dims = 1:15, reduction.name = "umap.harmony")
+DimPlot(B1, reduction = 'umap.harmony', label = T)
+
+B2 <- subset(B1, !(subset = harmony_clusters %in% c('4','6','9','14')))
+# Remove liver cells, T cells, Proliferating cells
+# Keep cluster 8 and 21 which are pDC, label back as pDC
+B2 <- NormalizeData(B2)
+B2 <- FindVariableFeatures(B2)
+B2 <- ScaleData(B2)
+B2 <- RunPCA(B2)
+B2 <- RunHarmony(B2, group.by.vars = "Patient_ID")
+B2 <- FindNeighbors(B2, reduction = "harmony", dims = 1:15)
+B2 <- FindClusters(B2, resolution = 1.0, cluster.name = "harmony_clusters")
+B2 <- RunUMAP(B2,reduction = "harmony", dims = 1:15, reduction.name = "umap.harmony")
+DimPlot(B2, reduction = 'umap.harmony', label = T)
+
+
+B2 <- subset(B2, !(subset = harmony_clusters %in% c('11','14','16','20','21')))
+B2@meta.data[which(B2@meta.data$harmony_clusters %in% c('4','9','10','12','13','15')),'CelltypeL2'] <- 'Plasma'
+B2@meta.data[which(B2@meta.data$harmony_clusters %in% c('4','9')),'Celltype3'] <- 'Plasma_PRDM1'
+B2@meta.data[which(B2@meta.data$harmony_clusters == '12'),'Celltype3'] <- 'Plasma_IGHA1'
+B2@meta.data[which(B2@meta.data$harmony_clusters == '13'),'Celltype3'] <- 'Plasma_IGKV1'
+B2@meta.data[which(B2@meta.data$harmony_clusters %in% c('10','15')),'Celltype3'] <- 'Plasma_IGHG1'
+
+B2@meta.data[which(B2@meta.data$harmony_clusters %in% c('0','1','2','3','5','6','8','17','18','19')),'CelltypeL2'] <- 'B'
+B2@meta.data[which(B2@meta.data$harmony_clusters %in% c('0','1','6','19')),'Celltype3'] <- 'NaiveB_TCLA1'
+B2@meta.data[which(B2@meta.data$harmony_clusters == '3'),'Celltype3'] <- 'B_HSPA1B'
+B2@meta.data[which(B2@meta.data$harmony_clusters == '18'),'Celltype3'] <- 'B_IGLC1'
+B2@meta.data[which(B2@meta.data$harmony_clusters %in% c('2','5','8','17')),'Celltype3'] <- 'Bm_CD27'
+
+B2@meta.data[which(B2@meta.data$harmony_clusters == '7'),'Celltype'] <- 'Myeloid'
+B2@meta.data[which(B2@meta.data$harmony_clusters == '7'),'CelltypeL2'] <- 'DC'
+B2@meta.data[which(B2@meta.data$harmony_clusters == '7'),'Celltype3'] <- 'pDC_CLEC4C'
+
+saveRDS(B2, file = 'B_Clean.rds')
+
+
+#########Endithelial cell #############
+keep <- setdiff(rownames(Endo), intersect(rownames(Endo), genes_to_drop))
+Endo1  <- Endo[keep, ]
+meta <- Endo1@meta.data
+# 1) Find cells where Patient_ID is missing (treat NA, empty string, or literal "NA" as missing)
+na_idx <- is.na(meta$Patient_ID) | meta$Patient_ID == "" | meta$Patient_ID == "NA"
+# 2) Inspect which Batch and Sample_ID those NA cells are from
+na_overview <- meta[na_idx, c("Batch", "Sample_ID", "Patient_ID")]
+# Quick counts by Batch/Sample_ID
+na_counts <- as.data.frame(na_overview) |>
+  dplyr::count(Batch, Sample_ID, name = "n")
+was_factor <- is.factor(Endo1$Patient_ID)
+Endo1$Patient_ID <- as.character(Endo1$Patient_ID)
+Endo1$Sample_ID  <- as.character(Endo1$Sample_ID)
+Endo1$Patient_ID[na_idx] <- Endo1$Sample_ID[na_idx] # Restore factor if it started as factor, and drop unused levels
+if (was_factor) {
+  Endo1$Patient_ID <- factor(Endo1$Patient_ID)
+}
+#Annotation 1st
+Endo1 <- NormalizeData(Endo1)
+Endo1 <- FindVariableFeatures(Endo1)
+Endo1 <- ScaleData(Endo1)
+Endo1 <- RunPCA(Endo1)
+Endo1 <- RunHarmony(Endo1, group.by.vars = "Patient_ID")
+Endo1 <- FindNeighbors(Endo1, reduction = "harmony", dims = 1:16)
+Endo1 <- FindClusters(Endo1, resolution = 1.2, cluster.name = "harmony_clusters")
+Endo1 <- RunUMAP(Endo1,reduction = "harmony", dims = 1:16, reduction.name = "umap.harmony")
+DimPlot(Endo1, reduction = 'umap.harmony', label = T)
+
+Endo2 <- subset(Endo1, !(subset = harmony_clusters %in% c('6','10','13','19','21','22')))
+Endo2 <- NormalizeData(Endo2)
+Endo2 <- FindVariableFeatures(Endo2)
+Endo2 <- ScaleData(Endo2)
+Endo2 <- RunPCA(Endo2)
+Endo2 <- RunHarmony(Endo2, group.by.vars = "Patient_ID")
+Endo2 <- FindNeighbors(Endo2, reduction = "harmony", dims = 1:16)
+Endo2 <- FindClusters(Endo2, resolution = 1.2, cluster.name = "harmony_clusters")
+Endo2 <- RunUMAP(Endo2,reduction = "harmony", dims = 1:16, reduction.name = "umap.harmony")
+DimPlot(Endo2, reduction = 'umap.harmony', label = T)
+NK.markers <- FindAllMarkers(Endo2, only.pos = TRUE)
+NK.markers %>%
+  group_by(cluster) %>%
+  dplyr::filter(avg_log2FC > 1) %>%
+  slice_head(n = 10) %>%
+  ungroup() -> top10
+DoHeatmap(Endo2, features = top10$gene) + NoLegend()
+
+Endo2 <- subset(Endo2, !(subset = harmony_clusters %in% c('0','9','16','20','22')))
+Endo2 <- subset(Endo1, !(subset = harmony_clusters %in% c('6','10','13','19','21','22')))
+Endo2 <- NormalizeData(Endo2)
+Endo2 <- FindVariableFeatures(Endo2)
+Endo2 <- ScaleData(Endo2)
+Endo2 <- RunPCA(Endo2)
+Endo2 <- RunHarmony(Endo2, group.by.vars = "Patient_ID")
+Endo2 <- FindNeighbors(Endo2, reduction = "harmony", dims = 1:16)
+Endo2 <- FindClusters(Endo2, resolution = 1.2, cluster.name = "harmony_clusters")
+Endo2 <- RunUMAP(Endo2,reduction = "harmony", dims = 1:16, reduction.name = "umap.harmony")
+
+Endo2 <- subset(Endo2, !(subset = harmony_clusters %in% c('8','19','21')))
+Endo2@meta.data[which(Endo2@meta.data$harmony_clusters %in% c('2','4','10','20')),'CelltypeL2'] <- 'EC_arterial'
+Endo2@meta.data[which(Endo2@meta.data$harmony_clusters %in% c('2','4','10','20')),'Celltype3'] <- 'EC_arterial_FBLN5'
+Endo2@meta.data[which(Endo2@meta.data$harmony_clusters %in% 
+                           c('0','1','3','9','7','11','13','14','15','22')),'CelltypeL2'] <- 'EC_venous'
+Endo2@meta.data[which(Endo2@meta.data$harmony_clusters %in% c('0','3','9')),'Celltype3'] <- 'EC_venous_ESM1'
+Endo2@meta.data[which(Endo2@meta.data$harmony_clusters %in% c('7','11','13','14')),'Celltype3'] <- 'EC_Inflammation_C7'
+Endo2@meta.data[which(Endo2@meta.data$harmony_clusters %in% c('15')),'Celltype3'] <- 'EC_venous_HSPA1A'
+Endo2@meta.data[which(Endo2@meta.data$harmony_clusters %in% c('22')),'Celltype3'] <- 'EC_Inflammation_CXCL9'
+Endo2@meta.data[which(Endo2@meta.data$harmony_clusters %in% c('1')),'Celltype3'] <- 'EC_venous_VWF'
+Endo2@meta.data[which(Endo2@meta.data$harmony_clusters %in% c('5','18')),'CelltypeL2'] <- 'EC_capillary'
+Endo2@meta.data[which(Endo2@meta.data$harmony_clusters %in% c('5','18')),'Celltype3'] <- 'EC_capillary_CA4'
+Endo2@meta.data[which(Endo2@meta.data$harmony_clusters %in% c('6','12','17')),'CelltypeL2'] <- 'EC_LSEC'
+Endo2@meta.data[which(Endo2@meta.data$harmony_clusters %in% c('6','12','17')),'Celltype3'] <- 'EC_LSEC_CLEC4G'
+Endo2@meta.data[which(Endo2@meta.data$harmony_clusters %in% c('16')),'CelltypeL2'] <- 'EC_LEC'
+Endo2@meta.data[which(Endo2@meta.data$harmony_clusters == '16'),'Celltype3'] <- 'EC_LEC_PROX1'
+saveRDS(Endo2, file = 'Endo_Clean.rds')
+
+#########################################Fibroblast
+Fib1  <- Fib[keep, ]
+meta <- Fib1@meta.data
+# 1) Find cells where Patient_ID is missing (treat NA, empty string, or literal "NA" as missing)
+na_idx <- is.na(meta$Patient_ID) | meta$Patient_ID == "" | meta$Patient_ID == "NA"
+# 2) Inspect which Batch and Sample_ID those NA cells are from
+na_overview <- meta[na_idx, c("Batch", "Sample_ID", "Patient_ID")]
+# Quick counts by Batch/Sample_ID
+na_counts <- as.data.frame(na_overview) |>
+  dplyr::count(Batch, Sample_ID, name = "n")
+was_factor <- is.factor(Fib1$Patient_ID)
+Fib1$Patient_ID <- as.character(Fib1$Patient_ID)
+Fib1$Sample_ID  <- as.character(Fib1$Sample_ID)
+Fib1$Patient_ID[na_idx] <- Fib1$Sample_ID[na_idx] # Restore factor if it started as factor, and drop unused levels
+if (was_factor) {
+  Fib1$Patient_ID <- factor(Fib1$Patient_ID)
+}
+Fib1 <- NormalizeData(Fib1)
+Fib1 <- FindVariableFeatures(Fib1)
+Fib1 <- ScaleData(Fib1)
+Fib1 <- RunPCA(Fib1)
+Fib1 <- RunHarmony(Fib1, group.by.vars = "Patient_ID")
+Fib1 <- FindNeighbors(Fib1, reduction = "harmony", dims = 1:16)
+Fib1 <- FindClusters(Fib1, resolution = 1.2, cluster.name = "harmony_clusters")
+Fib1 <- RunUMAP(Fib1,reduction = "harmony", dims = 1:16, reduction.name = "umap.harmony")
+DimPlot(Fib1, reduction = 'umap.harmony', label = T)
+Fib2 <- subset(Fib1, !(subset = harmony_clusters %in% c('4','7','9','11','12','13','14','15','18','22')))
+Fib2 <- NormalizeData(Fib2)
+Fib2 <- FindVariableFeatures(Fib2)
+Fib2 <- ScaleData(Fib2)
+Fib2 <- RunPCA(Fib2)
+Fib2 <- RunHarmony(Fib2, group.by.vars = "Patient_ID")
+Fib2 <- FindNeighbors(Fib2, reduction = "harmony", dims = 1:15)
+Fib2 <- FindClusters(Fib2, resolution = 0.7, cluster.name = "harmony_clusters")
+Fib2 <- RunUMAP(Fib2,reduction = "harmony", dims = 1:15, reduction.name = "umap.harmony")
+DimPlot(Fib2, reduction = 'umap.harmony', label = T)
+NK.markers <- FindAllMarkers(Fib2, only.pos = TRUE)
+NK.markers %>%
+  group_by(cluster) %>%
+  dplyr::filter(avg_log2FC > 1) %>%
+  slice_head(n = 10) %>%
+  ungroup() -> top10
+DoHeatmap(Fib2, features = top10$gene) + NoLegend()
+Fib2 <- subset(Fib2, !(subset = harmony_clusters %in% c('1','16','17','18')))
+Fib2@meta.data[which(Fib2@meta.data$harmony_clusters %in% c('4','8','9','11','12','14')),'CelltypeL2'] <- 'Fibroblast'
+Fib2@meta.data[which(Fib2@meta.data$harmony_clusters %in% c('4','8','9','11','12')),'Celltype3'] <- 'HSC_RBP1'
+Fib2@meta.data[which(Fib2@meta.data$harmony_clusters %in% c('14')),'Celltype3'] <- 'Fibroblast_portal_SFRP2'
+
+Fib2@meta.data[which(Fib2@meta.data$harmony_clusters %in% c('0','7','15')),'CelltypeL2'] <- 'Perivascular'
+Fib2@meta.data[which(Fib2@meta.data$harmony_clusters %in% c('0','7','15')),'Celltype3'] <- 'Perivascular_CD36'
+
+Fib2@meta.data[which(Fib2@meta.data$harmony_clusters %in% c('2','3','5','6','10','13')),'CelltypeL2'] <- 'Mural'
+Fib2@meta.data[which(Fib2@meta.data$harmony_clusters %in% c('2','3','6','13')),'Celltype3'] <- 'Mural_PLN'
+Fib2@meta.data[which(Fib2@meta.data$harmony_clusters %in% c('5','10')),'Celltype3'] <- 'Mural_FOS'
+
+NKT <- readRDS('T and NK_Clean.rds')
+Myeloid <- readRDS('Myeloid_Clean.rds')
+B <- readRDS('B_Clean.rds')
+Endo <- readRDS('Endo_Clean.rds')
+Fib <- readRDS('Fib_Clean.rds')
+Hepa <- readRDS('Hepa.rds')
+scRNA<- merge(x=NKT, y=c(Myeloid,B,Endo,Fib,Hepa))
+mem.maxVSize(vsize = 300 * 1024)
+scRNA <- JoinLayers(scRNA)
+
+scRNA <- NormalizeData(scRNA)
+scRNA <- FindVariableFeatures(scRNA)
+scRNA <- ScaleData(scRNA)
+scRNA <- RunPCA(scRNA)
+scRNA <- RunHarmony(scRNA, group.by.vars = "Patient_ID")
+ElbowPlot(scRNA)
+scRNA <- FindNeighbors(scRNA, reduction = "harmony", dims = 1:15)
+scRNA <- FindClusters(scRNA, resolution = 1.2, cluster.name = "harmony_clusters")
+scRNA <- RunUMAP(scRNA,reduction = "harmony", dims = 1:15, reduction.name = "umap.harmony")
+DimPlot(scRNA, reduction = 'umap.harmony', label = T)
+scRNA$Celltype[which(scRNA$Celltype == 'T and NK')] <- 'T'
+scRNA$CelltypeL2[which(scRNA$Celltype == 'Hepatocytes')] <- 'Hepatocytes'
+scRNA$Celltype3[which(scRNA$Celltype == 'Hepatocytes')] <- 'Hepatocytes'
+
+scRNA <- readRDS('scRNA_Clean.rds')
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
