@@ -1,0 +1,139 @@
+###Figure 4A###
+meta <- CD45_LAB@meta.data
+keep_patients <- meta %>%
+  count(.data[['Patient_ID']], name = "n_cells") %>%
+  filter(n_cells >= 100) %>%
+  pull(!!patient_col)
+meta <- meta %>% filter(.data[['Patient_ID']] %in% keep_patients)
+count_df <- meta %>%
+  group_by(Patient_ID, CelltypeL3) %>%
+  summarise(n = n(), .groups = "drop")
+all_combinations <- expand.grid(
+  Patient_ID = unique(meta$Patient_ID),
+  CelltypeL3  = unique(meta$CelltypeL3),
+  stringsAsFactors = FALSE
+)
+count_df_complete <- all_combinations %>%
+  left_join(count_df, by = c("Patient_ID", "CelltypeL3")) %>%
+  mutate(n = ifelse(is.na(n), 0, n))
+prop_df <- count_df_complete %>%
+  group_by(Patient_ID) %>%
+  mutate(proportion = n / sum(n)) %>%
+  ungroup()
+prop_df <- prop_df %>%
+  left_join(meta %>% select(Patient_ID, Response) %>% distinct(),
+            by = "Patient_ID")
+compare_df_3AB <- prop_df %>%
+  group_by(CelltypeL3) %>%
+  summarise(
+    mean_Responder = mean(proportion[Response == "Responder"], na.rm = TRUE),
+    mean_NonResponder = mean(proportion[Response == "NonResponder"], na.rm = TRUE),
+    FC = mean_Responder / mean_NonResponder,
+    p_value = tryCatch({
+      if (length(unique(Response)) == 2) {
+        wilcox.test(
+          proportion[Response == "Responder"],
+          proportion[Response == "NonResponder"]
+        )$p.value
+      } else {
+        NA
+      }
+    }, error = function(e) NA),
+    .groups = "drop"
+  ) %>%
+  mutate(
+    log2FC = log2(FC),
+    adj_p = p.adjust(p_value, method = "BH")
+  ) %>%
+  arrange(p_value)
+
+
+plot_df1 <- compare_df_3AB %>%
+  mutate(
+    p_value = as.numeric(p_value),
+    log2FC  = as.numeric(log2FC),
+    score   = -log10(p_value) * ifelse(log2FC >= 0, 1, -1),
+    enrich_group = ifelse(log2FC >= 0, "Enriched in Responders", "Enriched in Nonresponders"),
+    sig = case_when(
+      p_value < 0.01  ~ "**",
+      p_value < 0.05  ~ "*",
+      TRUE            ~ ""
+    )
+  )
+plot_df1 <- plot_df1 %>%
+  arrange(score) %>%
+  mutate(CelltypeL3 = factor(CelltypeL3, levels = CelltypeL3))
+ggplot(plot_df1, aes(x = CelltypeL3, y = score, fill = enrich_group)) +
+  geom_col(width = 0.8, color = "black", linewidth = 0.3) +
+  geom_hline(yintercept = 0, color = "black", linewidth = 0.8) +
+  geom_text(
+    aes(
+      label = sig,
+      y = ifelse(score > 0, score + 0.25, score - 0.25)
+    ),
+    size = 5
+  ) +
+  scale_fill_manual(
+    values = c(
+      "Enriched in Nonresponders" = "#6F95E3",
+      "Enriched in Responders"    = "#F56A6A"
+    )
+  )  +
+  theme_classic(base_size = 16) +
+  theme(
+    axis.text.x = element_text(angle = 90, hjust = 1, vjust = 1),
+    axis.line = element_line(color = "black", linewidth = 0.8),
+    legend.position = "right"
+  )
+
+
+
+###Figure 4B####
+Idents(NK_LAB) <- "Response"
+deg_results <- FindMarkers(
+  object = NK_LAB,
+  ident.1 = "Responder",
+  ident.2 = "NonResponder",
+  test.use = "wilcox",     # Wilcoxon test (default)
+  logfc.threshold = 0,     # keep all genes, not only strong ones
+  min.pct = 0.1,           # only test genes expressed in ≥10% of cells
+  only.pos = FALSE          # include both up and down
+)
+write.csv(deg_results, "DEG_NK_LAB_RvsNR_DESeq2.csv", row.names = T)
+
+
+
+###Figure 4D###
+library(dplyr)
+library(fgsea)
+library(ggplot2)
+rank_tbl <- deg_results %>%
+  rownames_to_column("gene") %>%
+  filter(!is.na(avg_log2FC), !is.na(p_val))
+geneList <- with(rank_tbl, sign(avg_log2FC) * -log10(p_val + 1e-300))
+names(geneList) <- rank_tbl$gene
+geneList <- geneList[!is.na(geneList)]
+geneList <- geneList[!duplicated(names(geneList))]
+geneList <- sort(geneList, decreasing = TRUE)
+nk3_in_universe <- intersect(NK3_GENES, names(geneList))
+term2gene <- data.frame(term = "NK3", gene = nk3_in_universe, check.names = FALSE)
+set.seed(123)
+gsea_res <- GSEA(
+  geneList    = geneList,
+  TERM2GENE   = term2gene,
+  minGSSize   = 1,
+  maxGSSize   = 5000,
+  pvalueCutoff= 1,
+  verbose     = FALSE,
+  seed        = TRUE
+)
+p <- gseaplot2(
+  gsea_res,
+  geneSetID     = "NK3",
+  title         = "NK3 enrichment (ident.1 vs ident.2)",
+  subplots      = c(1,2,3),
+  pvalue_table  = TRUE,        # shows NES, p.adjust, etc.
+  ES_geom       = "line",
+  rel_heights   = c(1.1, 0.3, 0.7)
+) 
+print(p)
