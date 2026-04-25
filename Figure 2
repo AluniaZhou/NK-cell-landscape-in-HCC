@@ -1,0 +1,395 @@
+###Figure 2A###
+NK1 <- subset(NK, subset = Tissue %in% c("Blood", "Adjacent Liver", "HCC"))
+NKb <- subset(NK1, subset = Timing == 'Baseline')
+pt <- table(NKb$CelltypeL3, NKb$Tissue)
+pt <- as.data.frame(pt)
+pt$Var1<- factor(pt$Var1, levels = c('NK1_CD55','NK1_FGFBP2', 'NK1_HSPA1B','NK2_GZMK',
+                                     'NK2_HSPA1B','NK2_KLRK1','NK3_KLRC2','ILC1_IL7R','IntILC1_ITGA1'))
+pt$Var2 <- factor(pt$Var2, levels = c("Blood", "Adjacent Liver", "HCC"))
+ggplot(pt, aes(x = Var2, y = Freq, fill = Var1)) +
+  geom_col(position = "fill", width = 0.5) +
+  xlab("Sample") +
+  ylab("Proportion") +
+  scale_fill_manual(values = NK_colors) +   # use your custom palette
+  theme_bw(base_size = 15) +
+  theme(
+    legend.title = element_blank(),
+    panel.grid = element_blank(),          # remove gridlines
+    panel.border = element_blank(),        # remove border if you like
+    axis.line = element_line(color = "black") # keep clean axis lines
+  )
+
+
+
+
+###Figure 2B###
+library(ggplot2)
+library(dplyr)
+emb <- Embeddings(NKb, "umap.harmony")
+df <- data.frame(
+  UMAP1 = emb[,1],
+  UMAP2 = emb[,2],
+  Tissue = NKb$Tissue
+)
+
+x_rng <- range(df$UMAP1)
+y_rng <- range(df$UMAP2)
+scale_factor <- diff(x_rng) / diff(y_rng)
+y_mid <- mean(y_rng)
+df$UMAP2_sq <- (df$UMAP2 - y_mid) * scale_factor + y_mid
+
+ggplot(df, aes(UMAP1, UMAP2_sq)) +
+  stat_density_2d(
+    aes(fill = after_stat(ndensity)),
+    geom = "raster",
+    contour = FALSE,
+    n = 200
+  ) +
+  geom_density_2d(color = "grey20", linewidth = 0.3) +
+  facet_wrap(~Tissue, nrow = 1) +
+  coord_equal(expand = FALSE) +
+  theme_classic() +
+  scale_fill_viridis_c(limits = c(0, 1), name = "Relative\nDensity") +
+  labs(x = "UMAP 1", y = "UMAP 2")
+
+
+
+###Figure 2C###
+library(monocle3)
+cds <- SeuratWrappers::as.cell_data_set(NK)
+cds <- cluster_cells(cds, resolution=1e-3)
+plot_cells(cds, color_cells_by = "cluster", show_trajectory_graph = FALSE)
+cds <- learn_graph(cds, use_partition = TRUE, verbose = FALSE)
+plot_cells(cds,
+           color_cells_by = "cluster",
+           label_groups_by_cluster=FALSE,
+           label_leaves=FALSE,
+           label_branch_points=FALSE)
+plot_cells(cds)
+cds <- order_cells(cds)
+plot_cells(cds,
+           color_cells_by = "pseudotime",
+           group_cells_by = "cluster",
+           label_cell_groups = FALSE,
+           label_groups_by_cluster=FALSE,
+           label_leaves=FALSE,
+           label_branch_points=FALSE,
+           label_roots = FALSE,
+           trajectory_graph_color = "grey60")
+
+
+
+
+###Figure 2D###
+deg_pt <- graph_test(cds, neighbor_graph = "principal_graph", cores = 4)
+sig_genes <- deg_pt %>%
+  filter(q_value < 0.05, morans_I > 0.1) %>%
+  arrange(q_value)
+top_gene_ids <- rownames(sig_genes)[1:min(50, nrow(sig_genes))]
+pt <- pseudotime(cds)
+cell_order <- names(sort(pt))
+pt_sorted <- pt[cell_order]
+expr_mat <- normalized_counts(cds)[top_gene_ids, cell_order]
+expr_mat <- as.matrix(expr_mat)
+expr_mat <- log1p(expr_mat)
+n_bins <- 100
+pt_grid <- seq(min(pt_sorted), max(pt_sorted), length.out = n_bins)
+smooth_gene <- function(y, x, xout, df = 3) {
+  dat <- data.frame(y = as.numeric(y), x = as.numeric(x))
+  dat <- dat[is.finite(dat$y) & is.finite(dat$x), , drop = FALSE]
+  
+  if (nrow(dat) < 10 || sd(dat$y, na.rm = TRUE) == 0) {
+    return(rep(0, length(xout)))
+  }
+  fit <- tryCatch(
+    lm(y ~ splines::ns(x, df = df), data = dat),
+    error = function(e) NULL
+  )
+  
+  if (is.null(fit)) {
+    return(rep(0, length(xout)))
+  }
+  pred <- tryCatch(
+    predict(fit, newdata = data.frame(x = xout)),
+    error = function(e) rep(0, length(xout))
+  )
+  
+  as.numeric(pred)
+}
+smooth_mat <- t(apply(expr_mat, 1, smooth_gene, x = pt_sorted, xout = pt_grid, df = 3))
+smooth_scaled <- t(scale(t(smooth_mat)))
+smooth_scaled[is.na(smooth_scaled)] <- 0
+lim <- 2
+smooth_scaled[smooth_scaled > lim] <- lim
+smooth_scaled[smooth_scaled < -lim] <- -lim
+annotation_col <- data.frame(
+  pseudotime = pt_grid
+)
+rownames(annotation_col) <- colnames(smooth_scaled) <- paste0("PT_", seq_len(ncol(smooth_scaled)))
+pheatmap(
+  smooth_scaled,
+  cluster_rows = TRUE,
+  cluster_cols = FALSE,
+  show_colnames = FALSE,
+  show_rownames = TRUE,
+  fontsize_row = 8,
+  border_color = NA,
+  annotation_col = annotation_col,
+  breaks = seq(-lim, lim, length.out = 101)
+)
+
+
+
+
+###Figure 2E###
+Markers <- FindMarkers(NK, ident.1 = "IntILC1_ITGA1")
+write.csv(Markers, file = 'ILC1marker.csv')
+
+
+
+###Figure 2F###
+Base <- subset(CD45, subset = Timing == 'Baseline')
+BaseHCC <- subset(Base, subset = Tissue == 'HCC')
+obj           <- BaseHCC                 # Seurat object
+sample_col    <- "Patient_ID"
+cell_col      <- "CelltypeL3"
+x_ct          <- "IntILC1_ITGA1"           # X-axis / reference cell type
+min_cells_ct  <- 10                     # minimum cells per (patient, cell type)
+method        <- "spearman"              # or "pearson"
+pt_color      <- "#E06A42"               # tweak as you like
+suppressPackageStartupMessages({
+  library(dplyr); library(tidyr); library(ggplot2); library(ggpubr); library(purrr)
+})
+meta_df <- obj@meta.data[, c(sample_col, cell_col), drop = FALSE] %>%
+  mutate(
+    sample_id = trimws(as.character(.data[[sample_col]])),
+    celltype  = trimws(as.character(.data[[cell_col]]))
+  ) %>%
+  select(sample_id, celltype)
+tab_counts <- table(meta_df$sample_id)
+keep_ids   <- names(tab_counts)[tab_counts >= 100]
+keep_idx <- meta_df$sample_id %in% keep_ids
+meta_df <- meta_df[keep_idx, , drop = FALSE]
+ct_counts <- meta_df %>%
+  count(sample_id, celltype, name = "n_cells")
+patient_totals <- ct_counts %>%
+  group_by(sample_id) %>%
+  summarise(n_total = sum(n_cells), .groups = "drop")
+ct_counts_filt <- ct_counts %>%
+  filter(n_cells >= min_cells_ct)
+prop_tab <- ct_counts_filt %>%
+  left_join(patient_totals, by = "sample_id") %>%
+  mutate(prop = n_cells / n_total) %>%
+  select(sample_id, celltype, prop) %>%
+  pivot_wider(names_from = celltype, values_from = prop)
+stopifnot(x_ct %in% names(prop_tab))
+other_cts <- setdiff(names(prop_tab), c("sample_id", x_ct))
+get_pair_df <- function(y_ct) {
+  prop_tab %>%
+    select(sample_id, X = all_of(x_ct), Y = all_of(y_ct)) %>%
+    drop_na(X, Y)
+}
+plot_pair <- function(y_ct) {
+  dat <- get_pair_df(y_ct)
+  if (nrow(dat) < 3) return(NULL)  # not enough points to fit a line
+  # compute correlation once so we can format the annotation exactly
+  ct <- suppressWarnings(cor.test(dat$X, dat$Y, method = method))
+  r_lab <- sprintf("R=%.2f", unname(ct$estimate))
+  p_lab <- if (ct$p.value < 0.001) "P<0.001" else sprintf("P=%.3f", ct$p.value)
+  lab   <- paste0(r_lab, ",", p_lab)
+  ggplot(dat, aes(x = X, y = Y)) +
+    geom_point(size = 2.6, alpha = 0.9, color = pt_color) +
+    geom_smooth(method = "lm", se = TRUE, linewidth = 0.8, color = pt_color, fill = "grey80") +
+    annotate("text", x = -Inf, y = Inf, hjust = -0.05, vjust = 1.2,
+             label = lab, size = 4.2) +
+    labs(
+      x = paste0("Proportion of ", x_ct),
+      y = paste0("Proportion of ", y_ct)
+    ) +
+    theme_bw(base_size = 12) +
+    theme(
+      panel.grid = element_blank(),
+      axis.title = element_text(color = "black"),
+      axis.text  = element_text(color = "black"),
+      plot.title = element_text(hjust = 0, face = "bold"),
+      panel.border = element_rect(color = "black", fill = NA, linewidth = 0.6)
+    )
+}
+plots <- map(other_cts, plot_pair)
+plots <- plots[!vapply(plots, is.null, logical(1))]
+pdf(sprintf("scatter_vs_%s.filtered.pdf", gsub("[^A-Za-z0-9]+","_", x_ct)),
+    width = 4.2, height = 4.2)
+invisible(lapply(plots, print))
+dev.off()
+message(sprintf("Saved %d pages (patients with >=%d cells in BOTH CTs).",
+                length(plots), min_cells_ct))
+
+
+
+
+
+###Figure 2G###
+suppressPackageStartupMessages({
+  library(TCGAbiolinks)
+  library(SummarizedExperiment)
+  library(edgeR)
+  library(dplyr); library(tidyr); library(tibble)
+  library(ggplot2); library(ggpubr)
+  library(survival); library(survminer)
+})
+set.seed(1)
+## 1) Download TCGA-LIHC (STAR - Counts)
+proj <- "TCGA-LIHC"
+query <- GDCquery(
+  project      = proj,
+  data.category= "Transcriptome Profiling",
+  data.type    = "Gene Expression Quantification",
+  workflow.type= "STAR - Counts",
+  sample.type  = "Primary Tumor"
+)
+GDCdownload(query)
+se <- GDCprepare(query)   # SummarizedExperiment: rows=genes, cols=samples
+counts <- assay(se) %>% as.matrix()
+gene_symbols <- rowData(se)$gene_name
+stopifnot(nrow(counts) == length(gene_symbols))
+cnt_df <- as.data.frame(counts) %>%
+  mutate(Symbol = gene_symbols) %>%
+  group_by(Symbol) %>%
+  summarise(across(where(is.numeric), mean, na.rm = TRUE), .groups = "drop")
+cnt_sym <- cnt_df %>% column_to_rownames("Symbol") %>% as.matrix()
+dge <- DGEList(counts = cnt_sym)
+dge <- calcNormFactors(dge, method = "TMM")
+logCPM <- edgeR::cpm(dge, log = TRUE, prior.count = 1)   # log2 CPM
+
+## 2) Signature score Correlation plot (Figure S6G)
+signature <- gene_list
+present <- signature[signature %in% rownames(logCPM)]
+missing <- setdiff(signature, present)
+if (length(missing) > 0) message("Missing genes dropped: ", paste(missing, collapse=", "))
+zscore <- function(x) (x - mean(x, na.rm = TRUE)) / sd(x, na.rm = TRUE)
+sig_mat <- t(apply(logCPM[present, , drop = FALSE], 1, zscore))  # genes x samples (z)
+sig_score <- colMeans(sig_mat, na.rm = TRUE)                      # named by barcode
+if (!"TGFB1" %in% rownames(logCPM)) stop("TGFB1 not found.")
+tgfb1 <- as.numeric(logCPM["TGFB1", ])
+dat <- tibble(
+  barcode = colnames(logCPM),
+  signature_score = as.numeric(sig_score[colnames(logCPM)]),
+  TGFB1 = tgfb1
+) %>% drop_na()
+## 3) Correlation & plot
+method <- "spearman"   # or "pearson"
+pt_color <- "#E06A42"
+ct <- suppressWarnings(cor.test(dat$signature_score, dat$TGFB1, method = method))
+r_lab <- sprintf("R=%.2f", unname(ct$estimate))
+p_lab <- if (ct$p.value < 0.001) "P<0.001" else sprintf("P=%.3f", ct$p.value)
+lab   <- paste0(r_lab, ",", p_lab)
+p_cor <- ggplot(dat, aes(x = signature_score, y = TGFB1)) +
+  geom_point(size = 2.6, alpha = 0.9, color = pt_color) +
+  geom_smooth(method = "lm", se = TRUE, linewidth = 0.8,
+              color = pt_color, fill = "grey80") +
+  annotate("text", x = -Inf, y = Inf, hjust = -0.05, vjust = 1.2,
+           label = lab, size = 4.2) +
+  labs(x = "Signature score (z-mean on logCPM)", y = "TGFB1 (log2 CPM)") +
+  theme_bw(base_size = 12) +
+  theme(panel.grid = element_blank(),
+        axis.title = element_text(color = "black"),
+        axis.text  = element_text(color = "black"),
+        panel.border = element_rect(color = "black", fill = NA, linewidth = 0.6))
+ggsave("TCGA_LIHC_signature_vs_TGFB1.png", p_cor, width = 4.2, height = 4.2, dpi = 300)
+pdf("TCGA_LIHC_signature_vs_TGFB1.pdf", width = 4.2, height = 4.2); print(p_cor); dev.off()
+
+## 4) Clinical + KM by median signature
+clin <- GDCquery_clinic(project = proj, type = "clinical")
+surv_df <- clin %>%
+  transmute(
+    case_id = submitter_id,
+    days_to_death = suppressWarnings(as.numeric(days_to_death)),
+    days_to_last_follow_up = suppressWarnings(as.numeric(days_to_last_follow_up)),
+    vital_status = tolower(vital_status)
+  ) %>%
+  mutate(
+    time = dplyr::coalesce(days_to_death, days_to_last_follow_up),
+    status = ifelse(vital_status == "dead", 1, 0)
+  ) %>%
+  select(case_id, time, status) %>%
+  drop_na(time, status)
+km_dat <- dat %>%
+  mutate(case_id = substr(barcode, 1, 12)) %>%     
+  inner_join(surv_df, by = "case_id")  %>%
+  mutate(group = ifelse(signature_score >= median(signature_score, na.rm = TRUE),
+                        "High", "Low"))
+fit <- survfit(Surv(time, status) ~ group, data = km_dat)
+p_km <- ggsurvplot(
+  fit, data = km_dat,
+  risk.table = TRUE, pval = TRUE, conf.int = FALSE,
+  palette = c("#5AAAE3", "#E04B4A"),
+  xlab = "Days", ylab = "Overall survival probability",
+  legend.title = "Signature", legend.labs = c("High","Low"),
+  ggtheme = theme_bw(base_size = 12)
+)
+ggsave("TCGA_LIHC_KM_signature_median.png", p_km$plot, width = 5.5, height = 4.5, dpi = 300)
+ggsave("TCGA_LIHC_KM_signature_median_risktable.png", p_km$table, width = 5.5, height = 2.2, dpi = 300)
+message("Done:\n - TCGA_LIHC_signature_vs_TGFB1.png/.pdf\n - TCGA_LIHC_KM_signature_median.png (+ risk table)")
+
+
+
+
+###Figure 2H###
+library(Seurat)
+library(survival)
+library(dplyr)
+## 1. Align bulk survival data
+common_ids <- intersect(colnames(logCPM), km_df$carcode)
+logCPM2 <- as.matrix(logCPM[, common_ids, drop = FALSE])
+km_df2 <- km_df %>%
+  filter(carcode %in% common_ids) %>%
+  distinct(carcode, .keep_all = TRUE) %>%
+  slice(match(common_ids, carcode))
+## 2. Filter genes
+keep1 <- apply(logCPM2, 1, function(x) all(is.finite(x)))
+gene_var <- apply(logCPM2[keep1, , drop = FALSE], 1, var)
+expr_mat <- logCPM2[keep1, , drop = FALSE][gene_var > 0.01, , drop = FALSE]
+## 3. Cox per gene
+surv_obj <- with(km_df2, Surv(time, status))
+cox_one_gene <- function(gene_expr) {
+  fit <- tryCatch(
+    coxph(surv_obj ~ as.numeric(gene_expr)),
+    error = function(e) NULL
+  )
+  if (is.null(fit)) return(c(beta = NA, p = NA))
+  s <- summary(fit)
+  c(beta = s$coefficients[1, "coef"],
+    p = s$coefficients[1, "Pr(>|z|)"])
+}
+cox_res <- t(apply(expr_mat, 1, cox_one_gene))
+cox_res <- as.data.frame(cox_res)
+cox_res$gene <- rownames(cox_res)
+cox_res$padj <- p.adjust(cox_res$p, method = "BH")
+sig_genes <- cox_res %>%
+  filter(!is.na(beta), !is.na(padj)) %>%
+  filter(padj < 0.05)
+
+if (nrow(sig_genes) < 20) {
+  sig_genes <- cox_res %>%
+    filter(!is.na(beta)) %>%
+    arrange(p) %>%
+    slice_head(n = 100)
+}
+cap <- quantile(abs(sig_genes$beta), 0.95, na.rm = TRUE)
+sig_genes$weight <- pmax(pmin(sig_genes$beta, cap), -cap)
+## 4. Project to NK
+DefaultAssay(NK) <- "RNA"
+nk_expr <- GetAssayData(NK, slot = "data")
+common_genes_nk <- intersect(rownames(nk_expr), sig_genes$gene)
+nk_expr2 <- nk_expr[common_genes_nk, , drop = FALSE]
+w_df <- sig_genes %>%
+  filter(gene %in% common_genes_nk) %>%
+  slice(match(common_genes_nk, gene))
+w <- w_df$weight
+nk_expr_scaled <- t(scale(t(as.matrix(nk_expr2))))
+nk_expr_scaled[is.na(nk_expr_scaled)] <- 0
+NK$PACells_score <- as.numeric(crossprod(w, nk_expr_scaled))
+NK$PACells_group <- ifelse(
+  NK$PACells_score >= quantile(NK$PACells_score, 0.9, na.rm = TRUE),
+  "PACells_high", "other"
+)
