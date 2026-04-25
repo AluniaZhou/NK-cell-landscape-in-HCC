@@ -1,0 +1,1275 @@
+#1. Load GO and YO data sets with meta information
+#1.1 Load YO40245 data
+setwd('V:/Analysis Ready Datasets')
+library(dplyr)
+library(haven)
+adrs <- read_sas('adrs.sas7bdat')
+
+#Filter for SD patients
+SD_patients <- adrs%>% 
+  filter(PARAMCD == 'CBORDF', RSSTRESC %in% c('SD','NON-CR/NON-PD'))%>% 
+  pull(UNI_ID) %>% 
+  unique()
+
+#Subset SD patients with HOVRF assessment 
+adrs_SD <- adrs %>% 
+  filter(UNI_ID %in% SD_patients, 
+         PARAMCD == 'HOVRF', 
+         VISIT %in% c('TUMOR ASSESSMENT WEEK 6','TUMOR ASSESSMENT WEEK 12','TUMOR ASSESSMENT WEEK 18', 'TUMOR ASSESSMENT WEEK 24'))
+
+#Classify response in SD patients
+SD_response_class <- adrs_SD %>%
+  group_by(UNI_ID) %>%
+  summarise(
+    responder = case_when(
+      any(RSSTRESC == 'PD')~0,
+      any(VISIT == 'TUMOR ASSESSMENT WEEK 24' & RSSTRESC %in% c('SD','PR','NON-CR/NON-PD'))~1,
+      TRUE ~ NA_real_
+    )
+  ) %>%
+  filter(!is.na(responder))
+
+#Full BR for SD patients with response information
+BR_SD <- adrs %>% 
+  filter(PARAMCD == 'CBORDF', RSSTRESC %in% c('SD','NON-CR/NON-PD')) %>%
+  semi_join(SD_response_class, by = 'UNI_ID') %>%
+  left_join(SD_response_class, by = 'UNI_ID')
+
+#Full BR for other patients with response information
+BR_CRPRPD <- adrs %>% 
+  filter(PARAMCD == 'CBORDF', RSSTRESC %in% c('CR','PR','PD')) %>%
+  mutate(responder = ifelse(RSSTRESC %in% c('CR','PR'),1,0))
+
+#Combine all patients with response label
+response_combined <- bind_rows(BR_SD,BR_CRPRPD)
+  
+#1.2 Load YO40245 Survival information
+adtte <-read_sas('adtte.sas7bdat')
+#Extract OS information
+OS_data <- adtte %>%
+  filter(PARAMCD == 'OS') %>%
+  transmute(
+    UNI_ID,
+    OS = AVAL,
+    OS_Censor = CNSR,
+    OS_event = EVNTDESC
+  )
+#Extract PFS information
+PFS_data <- adtte %>%
+  filter(PARAMCD == 'PFS') %>%
+  transmute(
+    UNI_ID,
+    PFS = AVAL,
+    PFS_Censor = CNSR,
+    PFS_event = EVNTDESC
+  )
+#Merge response table with OS/PFS
+DF <- merge(x=response_combined, y=c(OS_data, PFS_data), all.x = T)
+DF_response <- dplyr::select(DF, UNI_ID, TRT01P, responder, STUDYID, AGE,
+                        SEX, RACE, AFP, AFPC, MVI_EHS2, RSORRES, AVALC, 
+                     OS, OS_Censor, OS_event,PFS, PFS_Censor, PFS_event)
+  
+  
+#To include patients with NE response, mark as NA
+Pt_NE <- setdiff(unique(adrs$UNI_ID),unique(DF$UNI_ID))
+a <- adrs%>% filter(PARAMCD %in% 'CBOR')
+NE <- a %>%
+  filter(UNI_ID %in% Pt_NE) %>%
+  mutate(responder = NA)
+DF1 <- merge(x=NE, y=c(OS_data, PFS_data), all.x = T)
+DF_NE <- dplyr::select(DF1, UNI_ID, TRT01P, responder, STUDYID, AGE,
+                     SEX, RACE, AFP, AFPC, MVI_EHS2, RSORRES, AVALC, 
+                     OS, OS_Censor, OS_event,PFS, PFS_Censor, PFS_event)
+DF_YO <- bind_rows(DF_NE, DF_response)
+
+
+
+
+#1.3 Load GO30140 data
+setwd('V:/GO30140/Analysis Ready Datasets')
+library(dplyr)
+library(haven)
+ars <- read_sas('ars.sas7bdat')
+
+#Filter for SD patients
+SD_patients <- ars%>% 
+  filter(PARAMCD == 'HBESRSPR', AVALC %in% c('SD','NON-CR/NON-PD'))%>% 
+  pull(UNI_ID) %>% 
+  unique()
+
+#Subset SD patients with HOVRF assessment 
+ars_SD <- ars %>% 
+  filter(UNI_ID %in% SD_patients, 
+         PARAMCD == 'HOVRRAD', 
+         AVISIT %in% c('WEEK 16 TUMOR ASSESSMENTS','WEEK 24 TUMOR ASSESSMENTS',' WEEK 32 TUMOR ASSESSMENTS'))
+
+#Classify response in SD patients
+SD_response_class <- ars_SD %>%
+  group_by(UNI_ID) %>%
+  summarise(
+    responder = case_when(
+      any(AVALC == 'PD')~0,
+      any(AVISIT == 'WEEK 24 TUMOR ASSESSMENTS' & AVALC %in% c('SD','PR','NON-CR/NON-PD'))~1,
+      TRUE ~ NA_real_
+    )
+  ) %>%
+  filter(!is.na(responder))
+
+#Full BR for SD patients with response information
+BR_SD <- ars %>% 
+  filter(PARAMCD == 'HBESRSPR', AVALC %in% c('SD','NON-CR/NON-PD')) %>%
+  semi_join(SD_response_class, by = 'UNI_ID') %>%
+  left_join(SD_response_class, by = 'UNI_ID')
+
+#Full BR for other patients with response information
+BR_CRPRPD <- ars %>% 
+  filter(PARAMCD == 'HBESRSPR', AVALC %in% c('CR','PR','PD')) %>%
+  mutate(responder = ifelse(AVALC %in% c('CR','PR'),1,0))
+
+#Combine all patients with response label
+response_combined <- bind_rows(BR_SD,BR_CRPRPD)
+
+#1.4 Load GO30140 Survival information
+ate <-read_sas('ate.sas7bdat')
+#Extract OS information
+OS_data <- ate %>%
+  filter(PARAMCD == 'OS') %>%
+  transmute(
+    UNI_ID,
+    OS = AVAL/30.44,
+    OS_Censor = CNSR,
+    OS_event = EVNTDESC
+  )
+#Extract PFS information
+PFS_data <- ate %>%
+  filter(PARAMCD == 'PFSRAD') %>%
+  transmute(
+    UNI_ID,
+    PFS = AVAL/30.44,
+    PFS_Censor = CNSR,
+    PFS_event = EVNTDESC
+  )
+#Merge response table with OS/PFS
+DF <- merge(x=response_combined, y=c(OS_data, PFS_data), all.x = T)
+DF_response <- dplyr::select(DF, UNI_ID, TRT01P, responder, STUDYID, AGE,
+                             SEX, RACE, MVIEHS, ARM, AVALC, 
+                             OS, OS_Censor, OS_event,PFS, PFS_Censor, PFS_event)
+
+
+#To include patients with NE response, mark as NA
+Pt_NE <- setdiff(unique(ars$UNI_ID),unique(DF$UNI_ID))
+a <- ars%>% filter(PARAMCD %in% 'HBESRSPR')
+NE <- a %>%
+  filter(UNI_ID %in% Pt_NE) %>%
+  mutate(responder = NA)
+DF1 <- merge(x=NE, y=c(OS_data, PFS_data), all.x = T)
+DF_NE <- dplyr::select(DF1, UNI_ID, TRT01P, responder, STUDYID, AGE,
+                       SEX, RACE, MVIEHS, ARM, AVALC, 
+                       OS, OS_Censor, OS_event,PFS, PFS_Censor, PFS_event)
+DF_GO <- bind_rows(DF_NE, DF_response)
+
+#2. Load RNA-seq read count and mapping information
+#Clear the environment and load raw counts for GO and YO
+rm(list = setdiff(ls(),c('DF_GO','DF_YO')))
+Count_YO <- read.csv('V:/YO40245/yo40245_anon_rawcounts/yo40245_anon_rawcounts.csv')
+Count_YO_mapping <- read.csv('V:/YO40245/yo40245_anon_rawcounts/yo40245_anon_rawcounts_mapping.csv')
+Count_GO <- read.csv('V:/GO30140/anon_go30140_rawcounts/anon_go30140_rawcounts.csv')
+Count_GO_mapping <- read.csv('V:/GO30140/anon_go30140_rawcounts/anon_go30140_rawcounts_mapping.csv')
+
+#Refine count matrix to exclude some samples that have read-count info but failed to match back to original patients
+#Such as sample named as 'HRR16047_UHRR648185_20180125',not sure what it is aligned to
+library(matrixStats)
+Count_GO_mapping$trunc_anonymized_sample_ids <- gsub('-','.', Count_GO_mapping$trunc_anonymized_sample_ids)
+Count_YO_mapping$trunc_anonymized_sample_ids <- gsub('-','.', Count_YO_mapping$trunc_anonymized_sample_ids)
+C1 <- Count_GO[, !colnames(Count_GO) %in% setdiff(colnames(Count_GO)[-c(1:4)],Count_GO_mapping$trunc_anonymized_sample_ids)]
+C2 <- Count_YO[, !colnames(Count_YO) %in% setdiff(colnames(Count_YO)[-c(1:5)],Count_YO_mapping$trunc_anonymized_sample_ids)]
+
+#2.1 Clean for Go dataset
+#Identify samples that aligned to the same UNI-ID in mapping csv
+#Some patients (same UNI_ID) have more than 1 samples in count matrix
+Dup_GO <- Count_GO_mapping %>%
+  group_by(UNI_ID) %>%
+  filter(n_distinct(trunc_anonymized_sample_ids) > 1) %>%
+  ungroup()
+
+#Create a matrix to calculate the median value of read count for patient with duplicate samples
+Collapsed_Matrix_GO <- list()
+for (uid in unique(Dup_GO$UNI_ID)) {
+  sample_ids <- Dup_GO %>%
+    filter(UNI_ID == uid) %>%
+    pull(trunc_anonymized_sample_ids)
+  sub_counts <- C1[, colnames(C1) %in% sample_ids, drop = FALSE]
+  collapdsed <- rowMedians(as.matrix(sub_counts))
+  Collapsed_Matrix_GO[[uid]] <- collapdsed
+}
+
+Collapsed_df_GO <- do.call(cbind, Collapsed_Matrix_GO)
+colnames(Collapsed_df_GO) <- names(Collapsed_Matrix_GO)
+rownames(Collapsed_df_GO) <- rownames(C1)
+
+#Extract clean raw count DF after removing duplicated samples
+Count_GO_clean <- C1[, !colnames(C1) %in% Dup_GO$trunc_anonymized_sample_ids]
+Mapping <- setNames(Count_GO_mapping$UNI_ID, Count_GO_mapping$trunc_anonymized_sample_ids)
+colnames(Count_GO_clean)[-c(1:4)] <- Mapping[colnames(Count_GO_clean)[-c(1:4)]]
+#Add collapsed samples to clean samples, now final DF should be patients with unique meaningful sample ID
+Count_GO_final <- cbind(Count_GO_clean, Collapsed_df_GO)
+
+
+#2.2 Clean for Yo dataset
+#Identify samples that aligned to the same UNI-ID in mapping csv
+#Some patients (same UNI_ID) have more than 1 samples in count matrix
+Dup_YO <- Count_YO_mapping %>%
+  group_by(UNI_ID) %>%
+  filter(n_distinct(trunc_anonymized_sample_ids) > 1) %>%
+  ungroup()
+
+#Create a matrix to calculate the median value of read count for patient with duplicate samples
+Collapsed_Matrix_YO <- list()
+for (uid in unique(Dup_YO$UNI_ID)) {
+  sample_ids <- Dup_YO %>%
+    filter(UNI_ID == uid) %>%
+    pull(trunc_anonymized_sample_ids)
+  sub_counts <- C2[, colnames(C2) %in% sample_ids, drop = FALSE]
+  collapdsed <- rowMedians(as.matrix(sub_counts))
+  Collapsed_Matrix_YO[[uid]] <- collapdsed
+}
+
+Collapsed_df_YO <- do.call(cbind, Collapsed_Matrix_YO)
+colnames(Collapsed_df_YO) <- names(Collapsed_Matrix_YO)
+rownames(Collapsed_df_YO) <- rownames(C2)
+
+#Extract clean raw count DF after removing duplicated samples
+Count_YO_clean <- C2[, !colnames(C2) %in% Dup_YO$trunc_anonymized_sample_ids]
+Mapping <- setNames(Count_YO_mapping$UNI_ID, Count_YO_mapping$trunc_anonymized_sample_ids)
+colnames(Count_YO_clean)[-c(1:5)] <- Mapping[colnames(Count_YO_clean)[-c(1:5)]]
+#Add collapsed samples to clean samples, now final DF should be patients with unique meaningful sample ID
+Count_YO_final <- cbind(Count_YO_clean, Collapsed_df_YO)
+
+#Clean the environment
+rm(list = setdiff(ls(),c('DF_GO','DF_YO','Count_GO_final','Count_YO_final')))
+
+
+#3.Data formatting and clean 
+
+#3.1 Clean the data
+Count_GO_final <- Count_GO_final[,-c(1,2)]
+Count_YO_final <- Count_YO_final[,-c(1:3)]
+DFGO<-DF_GO
+DFYO<-DF_YO
+DFGO[[2]][DFGO[[2]] =='Atezo+Bev (Randomized)'] <-'Atezo+Bev'
+DFYO[[2]][DFYO[[2]] =='Atezolizumab 1200 mg Q3W + Bevacizumab 15 mg/kg Q3W'] <-'Atezo+Bev'
+DFYO[[2]][DFYO[[2]] =='Sorafenib 400 mg BID'] <-'Sorafenib'
+colnames(DFYO)[10]<-'MVIEHS'
+DFYO[[10]][DFYO[[10]] =='No'] <-'N'
+DFYO[[10]][DFYO[[10]] =='Yes'] <-'Y'
+DFGO <- DFGO[,-9]
+DFGO[[9]][DFGO[[9]] =='NON CR/PD'] <-'NON-CR/NON-PD'
+DFYO<-DFYO[,-11]
+DFGO[[15]][DFGO[[15]] =='Disease Progression Last tumor assessment'] <-'Disease Progression Last Tumor Assessment'
+
+#3.2 Load the missing meta information
+adsl_GO <- read_sas('V:/GO30140/Analysis Ready Datasets/adsl.sas7bdat')
+DFGO$AFPC <-adsl_GO$IVRAFP
+DFYO[[9]][DFYO[[9]] =='<400 ng/mL'] <-'<400'
+DFYO[[9]][DFYO[[9]] =='>=400 ng/mL'] <-'>=400'
+DFGO[[16]][DFGO[[16]] =='AFP >=400 NG/ML'] <-'>=400'
+DFGO[[16]][DFGO[[16]] =='AFP <400 NG/ML'] <-'<400'
+DFGO$ETIOLOGY <-adsl_GO$CAUHCCDX
+DFGO$PVT <-adsl_GO$LNVPVINV
+DFGO$EHS <-adsl_GO$EXHEPTPD
+DFGO$AFP <- NA
+adsl_YO <- read_sas('V:/Analysis Ready Datasets/adsl.sas7bdat')
+DFYO$ETIOLOGY <-adsl_YO$ETIOLOGY
+DFYO$PVT <-adsl_YO$HVTHR
+DFYO$EHS <-adsl_YO$EHS
+
+#3.3 Combine GO and YO data sets
+DF <- rbind(DFGO,DFYO)
+Count<- cbind(Count_GO_final,Count_YO_final)
+Count <- Count[,-c(221,222)]
+
+#Create Expr with only patients with both information
+Count_Agg <- Count %>% group_by(HGNC_Symbol) %>% summarise(across(where(is.numeric),sum))
+Count_Agg <- Count_Agg[-1,]
+Expr <- Count_Agg
+Expr <- as.data.frame(Expr)
+rownames(Expr) <- Expr$HGNC_Symbol
+Expr$HGNC_Symbol <- NULL
+Common_IDs <- intersect(colnames(Expr), DF$UNI_ID)
+Expr <- Expr[,Common_IDs]
+Meta <- DF %>% filter(UNI_ID %in% Common_IDs)
+
+
+#4 Gene signature analyse
+#4.1 TMM + Log2(CPM) normalization for signature analysis (only)
+library(edgeR)
+library(dplyr)
+Expr_mat <- as.matrix(Expr)
+dge <- DGEList(counts = Expr_mat)
+keep <- filterByExpr(dge)
+dge <- dge[keep, , keep.lib.sizes = FALSE]
+dge <- calcNormFactors(dge, method = 'TMM')
+expr_log2 <- cpm(dge, log = TRUE)
+
+#4.2 Define gene signature
+Test_set <- list(Angiogenesis_Score = c('VEGFA','KDR','FLT1','ANGPT2','TEK'))
+
+#4.3 GSVA analyse
+library(GSVA)
+gsva_matrix <- gsva(expr_log2, Test_set, method = 'gsva', kcdf = 'Gaussian')
+gsva_df <- as.data.frame(t(gsva_matrix))
+gsva_df$UNI_ID <- rownames(gsva_df)
+merged_df <- left_join(Meta, gsva_df, by = 'UNI_ID')
+
+#4.4 Basic plot of box plot
+library(ggplot2)
+library(ggpubr)
+merged_df_clean <- merged_df %>% filter(!is.na(responder))
+ggplot(merged_df_clean, aes(x= factor(responder), y = Angiogenesis_Score, fill = factor(responder))) +
+geom_boxplot(outlier.shape = NA, alpha = 0.7)+
+geom_jitter(width = 0.2, size = 1.5, alpha = 0.5) +
+labs(title = 'Angiogenesis signature score', x = 'Response Group',
+y = 'Angiogenesis Signature Score')+
+scale_fill_brewer(palette = 'Set1') +
+theme_classic2()+
+theme(
+axis.text.x = element_text(angle =30, hjust = 1),
+legend.position = 'none'
+)+
+stat_compare_means(
+method = 't.test',
+comparisons = combn(levels(factor(merged_df_clean$responder)), 2, simplify = FALSE),
+label = 'p.signif',
+tip.length = 0.02,
+hide.ns = TRUE
+)
+
+#Another way to use compare_means to add the statistic
+merged_df_clean$AVALC <- factor(merged_df_clean$AVALC)
+my_comparisions <- combn(levels(merged_df_clean$AVALC), 2, simplify = FALSE)
+stat_df <- compare_means(
+  formula = Angiogenesis_Score ~ AVALC,
+  data = merged_df_clean,
+  method = 't.test'
+)
+sig_stat_df <- stat_df %>% filter(p < 0.05)
+sig_comparisons <- split(sig_stat_df[,c('group1','group2')], seq(nrow(sig_stat_df)))
+sig_comparisons <- lapply(sig_comparisons, unlist)
+ggplot(merged_df_clean, aes(x= AVALC, y = Angiogenesis_Score, fill = AVALC)) +
+  geom_boxplot(outlier.shape = NA, alpha = 0.7)+
+  geom_jitter(width = 0.2, size = 1.5, alpha = 0.5) +
+  labs(title = 'Angiogenesis signature score', x = 'Response Group',
+       y = 'Angiogenesis Signature Score')+
+  scale_fill_brewer(palette = 'Set1') +
+  theme_classic2()+
+  theme(
+    axis.text.x = element_text(angle =30, hjust = 1),
+    legend.position = 'none'
+  )+
+  stat_compare_means(
+    comparisons = sig_comparisons,
+    label = 'p.signif',
+    tip.length = 0.02
+  )
+
+# 4.5 Basic survival plot example
+library(survival)
+library(survminer)
+merged_df_clean$Angio_Group <- ifelse(
+  merged_df_clean$Angiogenesis_Score > median(merged_df_clean$Angiogenesis_Score, na.rm = TRUE),
+  'High','Low')
+surv_obj <- Surv(merged_df_clean$OS, merged_df_clean$OS_event == 'Death')
+fit <- survfit(surv_obj ~ Angio_Group, data = merged_df_clean)
+
+# Calculate median survival, p value and HR
+medians <- surv_median(fit)
+cox_fit <- coxph(surv_obj ~ Angio_Group, data = merged_df_clean)
+summary_fit <- summary(cox_fit)
+hr <- round(summary_fit$coefficients[1, 'exp(coef)'],2)
+ci <- round(summary_fit$conf.int[1, c('lower .95', 'upper .95')],2)
+hr_label <- paste0('HR =' , hr, '[', ci[1], '-', ci[2], ']')
+pval <- signif(summary_fit$coefficients[1, 'Pr(>|z|)'],3)
+pval_label <- paste0('p = ', pval)
+
+P1 <- ggsurvplot(fit, data = merged_df_clean,
+           surv.median.line = 'hv',
+           risk.table = TRUE,
+           risk.table.y.text.col = TRUE,
+           risk.table.height = 0.25,
+           risk.table.y.text = FALSE,
+           break.time.by = 5,
+           legend = 'right',
+           legend.title = 'Group',
+           pval = FALSE,
+           palette = c('#E69F00', '#56B4E9'),
+           ggtheme = theme_classic2())
+
+P1$table <- P1$table +
+  theme(
+    axis.title.x = element_blank(),
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank(),
+    panel.border = element_blank()
+  )
+
+P1$plot <- P1$plot +  annotate('text',
+           x= medians$median + 0.5,
+           y = 0.02,
+           label = paste0(round(medians$median, 1)),
+           color = c('#E69F00', '#56B4E9'),
+           hjust =0,
+           size = 4) +
+  annotate('text', x = max(merged_df_clean$OS) * 0.65, y=0.95,
+           label = hr_label, hjust = 0, size = 4) +
+  annotate('text', x = max(merged_df_clean$OS) * 0.65, y=0.89,
+           label = pval_label, hjust = 0, size = 4) +
+  annotate('segment', x=0, xend =10, y=0.5, yend =0.5,
+           color = 'gray50', linetype = 'dotted')+
+  labs(x = 'Time to event (months)', y = 'OS Probability')
+
+P1
+
+#5 Fine plots to analyse adpNK signature
+#5.2 GSVA analyse
+library(GSVA)
+gsva_matrix <- gsva(expr_log2, ApdNK_set, method = 'gsva', kcdf = 'Gaussian')
+gsva_df <- as.data.frame(t(gsva_matrix))
+gsva_df$UNI_ID <- rownames(gsva_df)
+merged_df_Adp <- left_join(Meta, gsva_df, by = 'UNI_ID')
+
+#5.3 Basic plot of box plot
+library(ggplot2)
+library(ggpubr)
+DF_Ate <- merged_df_Adp[merged_df_Adp$TRT01P == 'Atezo', ]
+DF_AB <- merged_df_Adp[merged_df_Adp$TRT01P == 'Atezo+Bev', ]
+DF_S <- merged_df_Adp[merged_df_Adp$TRT01P == 'Sorafenib', ]
+
+#5.3.1 For AB treated group
+# Responder compare
+DF_AB_Res <- DF_AB %>% filter(!is.na(responder))
+DF_AB_Res$responder <- factor(DF_AB_Res$responder)
+my_comparisions <- combn(levels(DF_AB_Res$responder), 2, simplify = FALSE)
+stat_df <- compare_means(
+  formula = AdaptiveNK_Score ~ responder,
+  data = DF_AB_Res,
+  method = 't.test'
+)
+sig_stat_df <- stat_df %>% filter(p < 0.05)
+sig_comparisons <- split(sig_stat_df[,c('group1','group2')], seq(nrow(sig_stat_df)))
+sig_comparisons <- lapply(sig_comparisons, unlist)
+ggplot(DF_AB_Res, aes(x= responder, y = AdaptiveNK_Score, fill = responder)) +
+  geom_boxplot(outlier.shape = NA, alpha = 0.7)+
+  geom_jitter(width = 0.2, size = 1.5, alpha = 0.5) +
+  labs(title = 'Adaptive NK signature score', x = 'Response Group',
+       y = 'Adaptive NK Signature Score')+
+  scale_fill_brewer(palette = 'Set1') +
+  theme_classic2()+
+  theme(
+    axis.text.x = element_text(angle =30, hjust = 1),
+    legend.position = 'none'
+  )+
+  stat_compare_means(
+    comparisons = sig_comparisons,
+    label = 'p.signif',
+    tip.length = 0.02
+  )
+# AVACL compare
+DF_AB_AVALC <- DF_AB[DF_AB$AVALC %in% c('CR','PD','PR','SD'),]
+DF_AB_AVALC$AVALC <- factor(DF_AB_AVALC$AVALC, levels = c('CR','PR','SD','PD'))
+my_comparisions <- combn(levels(DF_AB_AVALC$AVALC), 2, simplify = FALSE)
+stat_df <- compare_means(
+  formula = AdaptiveNK_Score ~ AVALC,
+  data = DF_AB_AVALC,
+  method = 't.test'
+)
+sig_stat_df <- stat_df %>% filter(p < 0.05)
+sig_comparisons <- split(sig_stat_df[,c('group1','group2')], seq(nrow(sig_stat_df)))
+sig_comparisons <- lapply(sig_comparisons, unlist)
+ggplot(DF_AB_AVALC, aes(x= AVALC, y = AdaptiveNK_Score, fill = AVALC)) +
+  geom_boxplot(outlier.shape = NA, alpha = 0.7)+
+  geom_jitter(width = 0.2, size = 1.5, alpha = 0.5) +
+  labs(title = 'Adaptive NK signature score', x = 'Response Group',
+       y = 'Adaptive NK Signature Score')+
+  scale_fill_brewer(palette = 'Set1') +
+  theme_classic2()+
+  theme(
+    axis.text.x = element_text(angle =30, hjust = 1),
+    legend.position = 'none'
+  )+
+  stat_compare_means(
+    comparisons = sig_comparisons,
+    label = 'p.signif',
+    tip.length = 0.02
+  )
+
+
+#5.3.2 For Ate treated group
+# Responder compare
+DF_Ate_Res <- DF_Ate %>% filter(!is.na(responder))
+DF_Ate_Res$responder <- factor(DF_Ate_Res$responder)
+my_comparisions <- combn(levels(DF_Ate_Res$responder), 2, simplify = FALSE)
+stat_df <- compare_means(
+  formula = AdaptiveNK_Score ~ responder,
+  data = DF_Ate_Res,
+  method = 't.test'
+)
+sig_stat_df <- stat_df %>% filter(p < 0.05)
+sig_comparisons <- split(sig_stat_df[,c('group1','group2')], seq(nrow(sig_stat_df)))
+sig_comparisons <- lapply(sig_comparisons, unlist)
+ggplot(DF_Ate_Res, aes(x= responder, y = AdaptiveNK_Score, fill = responder)) +
+  geom_boxplot(outlier.shape = NA, alpha = 0.7)+
+  geom_jitter(width = 0.2, size = 1.5, alpha = 0.5) +
+  labs(title = 'Adaptive NK signature score', x = 'Response Group',
+       y = 'Adaptive NK Signature Score')+
+  scale_fill_brewer(palette = 'Set1') +
+  theme_classic2()+
+  theme(
+    axis.text.x = element_text(angle =30, hjust = 1),
+    legend.position = 'none'
+  )+
+  stat_compare_means(
+    comparisons = sig_comparisons,
+    label = 'p.signif',
+    tip.length = 0.02
+  )
+# AVACL compare
+DF_Ate_AVALC <- DF_Ate[DF_Ate$AVALC %in% c('CR','PD','PR','SD'),]
+DF_Ate_AVALC$AVALC <- factor(DF_Ate_AVALC$AVALC, levels = c('CR','PR','SD','PD'))
+my_comparisions <- combn(levels(DF_Ate_AVALC$AVALC), 2, simplify = FALSE)
+stat_df <- compare_means(
+  formula = AdaptiveNK_Score ~ AVALC,
+  data = DF_Ate_AVALC,
+  method = 't.test'
+)
+sig_stat_df <- stat_df %>% filter(p < 0.05)
+sig_comparisons <- split(sig_stat_df[,c('group1','group2')], seq(nrow(sig_stat_df)))
+sig_comparisons <- lapply(sig_comparisons, unlist)
+ggplot(DF_Ate_AVALC, aes(x= AVALC, y = AdaptiveNK_Score, fill = AVALC)) +
+  geom_boxplot(outlier.shape = NA, alpha = 0.7)+
+  geom_jitter(width = 0.2, size = 1.5, alpha = 0.5) +
+  labs(title = 'Adaptive NK signature score', x = 'Response Group',
+       y = 'Adaptive NK Signature Score')+
+  scale_fill_brewer(palette = 'Set1') +
+  theme_classic2()+
+  theme(
+    axis.text.x = element_text(angle =30, hjust = 1),
+    legend.position = 'none'
+  )+
+  stat_compare_means(
+    comparisons = sig_comparisons,
+    label = 'p.signif',
+    tip.length = 0.02
+  )
+
+
+#5.3.3 For S treated group
+# Responder compare
+DF_S_Res <- DF_S %>% filter(!is.na(responder))
+DF_S_Res$responder <- factor(DF_S_Res$responder)
+my_comparisions <- combn(levels(DF_S_Res$responder), 2, simplify = FALSE)
+stat_df <- compare_means(
+  formula = AdaptiveNK_Score ~ responder,
+  data = DF_S_Res,
+  method = 't.test'
+)
+sig_stat_df <- stat_df %>% filter(p < 0.05)
+sig_comparisons <- split(sig_stat_df[,c('group1','group2')], seq(nrow(sig_stat_df)))
+sig_comparisons <- lapply(sig_comparisons, unlist)
+ggplot(DF_S_Res, aes(x= responder, y = AdaptiveNK_Score, fill = responder)) +
+  geom_boxplot(outlier.shape = NA, alpha = 0.7)+
+  geom_jitter(width = 0.2, size = 1.5, alpha = 0.5) +
+  labs(title = 'Adaptive NK signature score', x = 'Response Group',
+       y = 'Adaptive NK Signature Score')+
+  scale_fill_brewer(palette = 'Set1') +
+  theme_classic2()+
+  theme(
+    axis.text.x = element_text(angle =30, hjust = 1),
+    legend.position = 'none'
+  )+
+  stat_compare_means(
+    comparisons = sig_comparisons,
+    label = 'p.signif',
+    tip.length = 0.02
+  )
+# AVACL compare
+DF_S_AVALC <- DF_S[DF_S$AVALC %in% c('CR','PD','PR','SD'),]
+DF_S_AVALC$AVALC <- factor(DF_S_AVALC$AVALC, levels = c('CR','PR','SD','PD'))
+my_comparisions <- combn(levels(DF_S_AVALC$AVALC), 2, simplify = FALSE)
+stat_df <- compare_means(
+  formula = AdaptiveNK_Score ~ AVALC,
+  data = DF_S_AVALC,
+  method = 't.test'
+)
+sig_stat_df <- stat_df %>% filter(p < 0.05)
+sig_comparisons <- split(sig_stat_df[,c('group1','group2')], seq(nrow(sig_stat_df)))
+sig_comparisons <- lapply(sig_comparisons, unlist)
+ggplot(DF_S_AVALC, aes(x= AVALC, y = AdaptiveNK_Score, fill = AVALC)) +
+  geom_boxplot(outlier.shape = NA, alpha = 0.7)+
+  geom_jitter(width = 0.2, size = 1.5, alpha = 0.5) +
+  labs(title = 'Adaptive NK signature score', x = 'Response Group',
+       y = 'Adaptive NK Signature Score')+
+  scale_fill_brewer(palette = 'Set1') +
+  theme_classic2()+
+  theme(
+    axis.text.x = element_text(angle =30, hjust = 1),
+    legend.position = 'none'
+  )+
+  stat_compare_means(
+    comparisons = sig_comparisons,
+    label = 'p.signif',
+    tip.length = 0.02
+  )
+
+# 5.4 Basic plot of OS survival plot
+library(survival)
+library(survminer)
+DF_Ate <- merged_df_Adp[merged_df_Adp$TRT01P == 'Atezo', ]
+DF_AB <- merged_df_Adp[merged_df_Adp$TRT01P == 'Atezo+Bev', ]
+DF_S <- merged_df_Adp[merged_df_Adp$TRT01P == 'Sorafenib', ]
+
+#5.4.1 For AB treated group
+DF_AB$AdaptiveNK_Group <- ifelse(
+  DF_AB$AdaptiveNK_Score > median(DF_AB$AdaptiveNK_Score, na.rm = TRUE),
+  'High','Low')
+surv_obj <- Surv(DF_AB$OS, DF_AB$OS_event == 'Death')
+fit <- survfit(surv_obj ~ AdaptiveNK_Group, data = DF_AB)
+
+# Calculate median survival, p value and HR
+medians <- surv_median(fit)
+cox_fit <- coxph(surv_obj ~ AdaptiveNK_Group, data = DF_AB)
+summary_fit <- summary(cox_fit)
+hr <- round(summary_fit$coefficients[1, 'exp(coef)'],2)
+ci <- round(summary_fit$conf.int[1, c('lower .95', 'upper .95')],2)
+hr_label <- paste0('HR =' , hr, '[', ci[1], '-', ci[2], ']')
+pval <- signif(summary_fit$coefficients[1, 'Pr(>|z|)'],3)
+pval_label <- paste0('p = ', pval)
+
+P1 <- ggsurvplot(fit, data = DF_AB,
+                 surv.median.line = 'hv',
+                 risk.table = TRUE,
+                 risk.table.y.text.col = TRUE,
+                 risk.table.height = 0.25,
+                 risk.table.y.text = FALSE,
+                 break.time.by = 5,
+                 legend = 'right',
+                 legend.title = 'Group',
+                 pval = FALSE,
+                 palette = c('#E69F00', '#56B4E9'),
+                 ggtheme = theme_classic2())
+
+P1$table <- P1$table +
+  theme(
+    axis.title.x = element_blank(),
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank(),
+    panel.border = element_blank()
+  )
+
+P1$plot <- P1$plot +  annotate('text',
+                               x= medians$median + 0.5,
+                               y = 0.02,
+                               label = paste0(round(medians$median, 1)),
+                               color = c('#E69F00', '#56B4E9'),
+                               hjust =0,
+                               size = 4) +
+  annotate('text', x = max(DF_AB$OS) * 0.65, y=0.95,
+           label = hr_label, hjust = 0, size = 4) +
+  annotate('text', x = max(DF_AB$OS) * 0.65, y=0.89,
+           label = pval_label, hjust = 0, size = 4) +
+  annotate('segment', x=0, xend =10, y=0.5, yend =0.5,
+           color = 'gray50', linetype = 'dotted')+
+  labs(x = 'Time to event (months)', y = 'OS Probability')
+
+P1
+
+#5.4.2 For Ate treated group
+DF_Ate$AdaptiveNK_Group <- ifelse(
+  DF_Ate$AdaptiveNK_Score > median(DF_Ate$AdaptiveNK_Score, na.rm = TRUE),
+  'High','Low')
+surv_obj <- Surv(DF_Ate$OS, DF_Ate$OS_event == 'Death')
+fit <- survfit(surv_obj ~ AdaptiveNK_Group, data = DF_Ate)
+
+# Calculate median survival, p value and HR
+medians <- surv_median(fit)
+cox_fit <- coxph(surv_obj ~ AdaptiveNK_Group, data = DF_Ate)
+summary_fit <- summary(cox_fit)
+hr <- round(summary_fit$coefficients[1, 'exp(coef)'],2)
+ci <- round(summary_fit$conf.int[1, c('lower .95', 'upper .95')],2)
+hr_label <- paste0('HR =' , hr, '[', ci[1], '-', ci[2], ']')
+pval <- signif(summary_fit$coefficients[1, 'Pr(>|z|)'],3)
+pval_label <- paste0('p = ', pval)
+
+P1 <- ggsurvplot(fit, data = DF_Ate,
+                 surv.median.line = 'hv',
+                 risk.table = TRUE,
+                 risk.table.y.text.col = TRUE,
+                 risk.table.height = 0.25,
+                 risk.table.y.text = FALSE,
+                 break.time.by = 5,
+                 legend = 'right',
+                 legend.title = 'Group',
+                 pval = FALSE,
+                 palette = c('#E69F00', '#56B4E9'),
+                 ggtheme = theme_classic2())
+
+P1$table <- P1$table +
+  theme(
+    axis.title.x = element_blank(),
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank(),
+    panel.border = element_blank()
+  )
+# Median OS values re not added due to most patients in GO GroupA with Ate were not followed before event
+P1$plot <- P1$plot + 
+  annotate('text', x = max(DF_Ate$OS) * 0.65, y=0.95,
+           label = hr_label, hjust = 0, size = 4) +
+  annotate('text', x = max(DF_Ate$OS) * 0.65, y=0.89,
+           label = pval_label, hjust = 0, size = 4) +
+  annotate('segment', x=0, xend =10, y=0.5, yend =0.5,
+           color = 'gray50', linetype = 'dotted')+
+  labs(x = 'Time to event (months)', y = 'OS Probability')
+
+P1
+
+#5.4.3 For S treated group
+DF_S$AdaptiveNK_Group <- ifelse(
+  DF_S$AdaptiveNK_Score > median(DF_S$AdaptiveNK_Score, na.rm = TRUE),
+  'High','Low')
+surv_obj <- Surv(DF_S$OS, DF_S$OS_event == 'Death')
+fit <- survfit(surv_obj ~ AdaptiveNK_Group, data = DF_S)
+
+# Calculate median survival, p value and HR
+medians <- surv_median(fit)
+cox_fit <- coxph(surv_obj ~ AdaptiveNK_Group, data = DF_S)
+summary_fit <- summary(cox_fit)
+hr <- round(summary_fit$coefficients[1, 'exp(coef)'],2)
+ci <- round(summary_fit$conf.int[1, c('lower .95', 'upper .95')],2)
+hr_label <- paste0('HR =' , hr, '[', ci[1], '-', ci[2], ']')
+pval <- signif(summary_fit$coefficients[1, 'Pr(>|z|)'],3)
+pval_label <- paste0('p = ', pval)
+
+P1 <- ggsurvplot(fit, data = DF_S,
+                 surv.median.line = 'hv',
+                 risk.table = TRUE,
+                 risk.table.y.text.col = TRUE,
+                 risk.table.height = 0.25,
+                 risk.table.y.text = FALSE,
+                 break.time.by = 5,
+                 legend = 'right',
+                 legend.title = 'Group',
+                 pval = FALSE,
+                 palette = c('#E69F00', '#56B4E9'),
+                 ggtheme = theme_classic2())
+
+P1$table <- P1$table +
+  theme(
+    axis.title.x = element_blank(),
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank(),
+    panel.border = element_blank()
+  )
+#Median OS labels are added seperatly due to distance close
+P1$plot <- P1$plot + annotate('text',
+                              x= medians$median[[1]] - 1,
+                              y = 0.02,
+                              label = paste0(round(medians$median[[1]], 1)),
+                              color = c('#E69F00'),
+                              hjust =0,
+                              size = 4) + 
+  annotate('text',
+           x= medians$median[[2]] + 0.5,
+           y = 0.02,
+           label = paste0(round(medians$median[[2]], 1)),
+           color = c('#56B4E9'),
+           hjust =0,
+           size = 4)+
+  annotate('text', x = max(DF_S$OS) * 0.65, y=0.95,
+           label = hr_label, hjust = 0, size = 4) +
+  annotate('text', x = max(DF_S$OS) * 0.65, y=0.89,
+           label = pval_label, hjust = 0, size = 4) +
+  annotate('segment', x=0, xend =10, y=0.5, yend =0.5,
+           color = 'gray50', linetype = 'dotted')+
+  labs(x = 'Time to event (months)', y = 'OS Probability')
+
+P1
+
+# 5.5 Basic plot of PFS survival plot
+library(survival)
+library(survminer)
+DF_Ate <- merged_df_Adp[merged_df_Adp$TRT01P == 'Atezo', ]
+DF_AB <- merged_df_Adp[merged_df_Adp$TRT01P == 'Atezo+Bev', ]
+DF_S <- merged_df_Adp[merged_df_Adp$TRT01P == 'Sorafenib', ]
+
+#5.5.1 For AB treated group
+DF_AB$AdaptiveNK_Group <- ifelse(
+  DF_AB$AdaptiveNK_Score > median(DF_AB$AdaptiveNK_Score, na.rm = TRUE),
+  'High','Low')
+surv_obj <- Surv(DF_AB$PFS, DF_AB$PFS_Censor == 0)
+fit <- survfit(surv_obj ~ AdaptiveNK_Group, data = DF_AB)
+
+# Calculate median survival, p value and HR
+medians <- surv_median(fit)
+cox_fit <- coxph(surv_obj ~ AdaptiveNK_Group, data = DF_AB)
+summary_fit <- summary(cox_fit)
+hr <- round(summary_fit$coefficients[1, 'exp(coef)'],2)
+ci <- round(summary_fit$conf.int[1, c('lower .95', 'upper .95')],2)
+hr_label <- paste0('HR =' , hr, '[', ci[1], '-', ci[2], ']')
+pval <- signif(summary_fit$coefficients[1, 'Pr(>|z|)'],3)
+pval_label <- paste0('p = ', pval)
+
+P1 <- ggsurvplot(fit, data = DF_AB,
+                 surv.median.line = 'hv',
+                 risk.table = TRUE,
+                 risk.table.y.text.col = TRUE,
+                 risk.table.height = 0.25,
+                 risk.table.y.text = FALSE,
+                 break.time.by = 5,
+                 legend = 'right',
+                 legend.title = 'Group',
+                 pval = FALSE,
+                 palette = c('#E69F00', '#56B4E9'),
+                 ggtheme = theme_classic2())
+
+P1$table <- P1$table +
+  theme(
+    axis.title.x = element_blank(),
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank(),
+    panel.border = element_blank()
+  )
+
+P1$plot <- P1$plot + annotate('text',
+                                x= medians$median + 0.5,
+                                y = 0.02,
+                                label = paste0(round(medians$median, 1)),
+                                color = c('#E69F00', '#56B4E9'),
+                                hjust =0,
+                                size = 4)  +
+  annotate('text', x = max(DF_AB$OS) * 0.65, y=0.95,
+           label = hr_label, hjust = 0, size = 4) +
+  annotate('text', x = max(DF_AB$OS) * 0.65, y=0.89,
+           label = pval_label, hjust = 0, size = 4) +
+  annotate('segment', x=0, xend =10, y=0.5, yend =0.5,
+           color = 'gray50', linetype = 'dotted')+
+  labs(x = 'Time to event (months)', y = 'PFS Probability')
+
+P1
+
+#5.5.2 For Ate treated group
+DF_Ate$AdaptiveNK_Group <- ifelse(
+  DF_Ate$AdaptiveNK_Score > median(DF_Ate$AdaptiveNK_Score, na.rm = TRUE),
+  'High','Low')
+surv_obj <- Surv(DF_Ate$PFS, DF_Ate$PFS_Censor == 0)
+fit <- survfit(surv_obj ~ AdaptiveNK_Group, data = DF_Ate)
+
+# Calculate median survival, p value and HR
+medians <- surv_median(fit)
+cox_fit <- coxph(surv_obj ~ AdaptiveNK_Group, data = DF_Ate)
+summary_fit <- summary(cox_fit)
+hr <- round(summary_fit$coefficients[1, 'exp(coef)'],2)
+ci <- round(summary_fit$conf.int[1, c('lower .95', 'upper .95')],2)
+hr_label <- paste0('HR =' , hr, '[', ci[1], '-', ci[2], ']')
+pval <- signif(summary_fit$coefficients[1, 'Pr(>|z|)'],3)
+pval_label <- paste0('p = ', pval)
+
+P1 <- ggsurvplot(fit, data = DF_Ate,
+                 surv.median.line = 'hv',
+                 risk.table = TRUE,
+                 risk.table.y.text.col = TRUE,
+                 risk.table.height = 0.25,
+                 risk.table.y.text = FALSE,
+                 break.time.by = 5,
+                 legend = 'right',
+                 legend.title = 'Group',
+                 pval = FALSE,
+                 palette = c('#E69F00', '#56B4E9'),
+                 ggtheme = theme_classic2())
+
+P1$table <- P1$table +
+  theme(
+    axis.title.x = element_blank(),
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank(),
+    panel.border = element_blank()
+  )
+
+P1$plot <- P1$plot + annotate('text',
+                                  x= medians$median + 0.5,
+                                  y = 0.02,
+                                  label = paste0(round(medians$median, 1)),
+                                  color = c('#E69F00', '#56B4E9'),
+                                  hjust =0,
+                                  size = 4) +
+  annotate('text', x = max(DF_Ate$OS) * 0.65, y=0.95,
+           label = hr_label, hjust = 0, size = 4) +
+  annotate('text', x = max(DF_Ate$OS) * 0.65, y=0.89,
+           label = pval_label, hjust = 0, size = 4) +
+  annotate('segment', x=0, xend =10, y=0.5, yend =0.5,
+           color = 'gray50', linetype = 'dotted')+
+  labs(x = 'Time to event (months)', y = 'PFS Probability')
+
+P1
+
+#5.4.3 For S treated group
+DF_S$AdaptiveNK_Group <- ifelse(
+  DF_S$AdaptiveNK_Score > median(DF_S$AdaptiveNK_Score, na.rm = TRUE),
+  'High','Low')
+surv_obj <- Surv(DF_S$PFS, DF_S$PFS_Censor == 0)
+fit <- survfit(surv_obj ~ AdaptiveNK_Group, data = DF_S)
+
+# Calculate median survival, p value and HR
+medians <- surv_median(fit)
+cox_fit <- coxph(surv_obj ~ AdaptiveNK_Group, data = DF_S)
+summary_fit <- summary(cox_fit)
+hr <- round(summary_fit$coefficients[1, 'exp(coef)'],2)
+ci <- round(summary_fit$conf.int[1, c('lower .95', 'upper .95')],2)
+hr_label <- paste0('HR =' , hr, '[', ci[1], '-', ci[2], ']')
+pval <- signif(summary_fit$coefficients[1, 'Pr(>|z|)'],3)
+pval_label <- paste0('p = ', pval)
+
+P1 <- ggsurvplot(fit, data = DF_S,
+                 surv.median.line = 'hv',
+                 risk.table = TRUE,
+                 risk.table.y.text.col = TRUE,
+                 risk.table.height = 0.25,
+                 risk.table.y.text = FALSE,
+                 break.time.by = 5,
+                 legend = 'right',
+                 legend.title = 'Group',
+                 pval = FALSE,
+                 palette = c('#E69F00', '#56B4E9'),
+                 ggtheme = theme_classic2())
+
+P1$table <- P1$table +
+  theme(
+    axis.title.x = element_blank(),
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank(),
+    panel.border = element_blank()
+  )
+#Median OS labels are added separately due to distance close
+P1$plot <- P1$plot + annotate('text',
+                              x= medians$median[[1]] + 1,
+                              y = 0.02,
+                              label = paste0(round(medians$median[[1]], 1)),
+                              color = c('#E69F00'),
+                              hjust =0,
+                              size = 4) + 
+  annotate('text',
+           x= medians$median[[2]] - 0.5,
+           y = 0.02,
+           label = paste0(round(medians$median[[2]], 1)),
+           color = c('#56B4E9'),
+           hjust =0,
+           size = 4)+
+  annotate('text', x = max(DF_S$OS) * 0.65, y=0.95,
+           label = hr_label, hjust = 0, size = 4) +
+  annotate('text', x = max(DF_S$OS) * 0.65, y=0.89,
+           label = pval_label, hjust = 0, size = 4) +
+  annotate('segment', x=0, xend =10, y=0.5, yend =0.5,
+           color = 'gray50', linetype = 'dotted')+
+  labs(x = 'Time to event (months)', y = 'PFS Probability')
+
+P1
+
+# 5.5 Compare if A+B could bring benefit in AdpNK high and low group
+merged_df_Adp$AdaptiveNK_Group <- ifelse(
+  merged_df_Adp$AdaptiveNK_Score > median(merged_df_Adp$AdaptiveNK_Score, na.rm = TRUE),
+  'High', 'Low')
+High_sig_df <- merged_df_Adp %>% filter(AdaptiveNK_Group == 'High')
+Low_sig_df <- merged_df_Adp %>% filter(AdaptiveNK_Group == 'Low')
+# 5.5.1 OS compare in sig High
+surv_obj <- Surv(High_sig_df$OS, High_sig_df$OS_event == 'Death')
+fit <- survfit(surv_obj ~ TRT01P, data = High_sig_df)
+medians <- surv_median(fit)
+cox_fit <- coxph(surv_obj ~ TRT01P, data = High_sig_df)
+summary_fit <- summary(cox_fit)
+hr <- round(summary_fit$coefficients[1, 'exp(coef)'],2)
+ci <- round(summary_fit$conf.int[1, c('lower .95', 'upper .95')],2)
+hr_label <- paste0('HR =' , hr, '[', ci[1], '-', ci[2], ']')
+pval <- signif(summary_fit$coefficients[1, 'Pr(>|z|)'],3)
+pval_label <- paste0('p = ', pval)
+
+P1 <- ggsurvplot(fit, data = High_sig_df,
+                 surv.median.line = 'hv',
+                 risk.table = TRUE,
+                 risk.table.y.text.col = TRUE,
+                 risk.table.height = 0.25,
+                 risk.table.y.text = FALSE,
+                 break.time.by = 5,
+                 legend = 'right',
+                 legend.title = 'Group',
+                 pval = FALSE,
+                 palette = c('#E69F00', '#56B4E9','#e12885'),
+                 ggtheme = theme_classic2())
+
+P1$table <- P1$table +
+  theme(
+    axis.title.x = element_blank(),
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank(),
+    panel.border = element_blank()
+  )
+
+P1$plot <- P1$plot + annotate('text',
+                              x= medians$median + 0.5,
+                              y = 0.02,
+                              label = paste0(round(medians$median, 1)),
+                              color = c('#E69F00', '#56B4E9','#e12885'),
+                              hjust =0,
+                              size = 4)  +
+  annotate('text', x = max(DF_AB$OS) * 0.65, y=0.95,
+           label = hr_label, hjust = 0, size = 4) +
+  annotate('text', x = max(DF_AB$OS) * 0.65, y=0.89,
+           label = pval_label, hjust = 0, size = 4) +
+  annotate('segment', x=0, xend =10, y=0.5, yend =0.5,
+           color = 'gray50', linetype = 'dotted')+
+  labs(x = 'Time to event (months)', y = 'OS Probability')
+
+P1
+#5.5.2 OS compare is sig low
+surv_obj <- Surv(Low_sig_df$OS, Low_sig_df$OS_event == 'Death')
+fit <- survfit(surv_obj ~ TRT01P, data = Low_sig_df)
+medians <- surv_median(fit)
+cox_fit <- coxph(surv_obj ~ TRT01P, data = Low_sig_df)
+summary_fit <- summary(cox_fit)
+hr <- round(summary_fit$coefficients[1, 'exp(coef)'],2)
+ci <- round(summary_fit$conf.int[1, c('lower .95', 'upper .95')],2)
+hr_label <- paste0('HR =' , hr, '[', ci[1], '-', ci[2], ']')
+pval <- signif(summary_fit$coefficients[1, 'Pr(>|z|)'],3)
+pval_label <- paste0('p = ', pval)
+
+P1 <- ggsurvplot(fit, data = Low_sig_df,
+                 surv.median.line = 'hv',
+                 risk.table = TRUE,
+                 risk.table.y.text.col = TRUE,
+                 risk.table.height = 0.25,
+                 risk.table.y.text = FALSE,
+                 break.time.by = 5,
+                 legend = 'right',
+                 legend.title = 'Group',
+                 pval = FALSE,
+                 palette = c('#E69F00', '#56B4E9','#e12885'),
+                 ggtheme = theme_classic2())
+
+P1$table <- P1$table +
+  theme(
+    axis.title.x = element_blank(),
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank(),
+    panel.border = element_blank()
+  )
+
+P1$plot <- P1$plot + annotate('text',
+                              x= medians$median + 0.5,
+                              y = 0.02,
+                              label = paste0(round(medians$median, 1)),
+                              color = c('#E69F00', '#56B4E9','#e12885'),
+                              hjust =0,
+                              size = 4)  +
+  annotate('text', x = max(DF_AB$OS) * 0.65, y=0.95,
+           label = hr_label, hjust = 0, size = 4) +
+  annotate('text', x = max(DF_AB$OS) * 0.65, y=0.89,
+           label = pval_label, hjust = 0, size = 4) +
+  annotate('segment', x=0, xend =10, y=0.5, yend =0.5,
+           color = 'gray50', linetype = 'dotted')+
+  labs(x = 'Time to event (months)', y = 'OS Probability')
+
+P1
+# 5.5.3 PFS compare in sig high
+surv_obj <- Surv(High_sig_df$PFS, High_sig_df$PFS_Censor == 0)
+fit <- survfit(surv_obj ~ TRT01P, data = High_sig_df)
+medians <- surv_median(fit)
+cox_fit <- coxph(surv_obj ~ TRT01P, data = High_sig_df)
+summary_fit <- summary(cox_fit)
+hr <- round(summary_fit$coefficients[1, 'exp(coef)'],2)
+ci <- round(summary_fit$conf.int[1, c('lower .95', 'upper .95')],2)
+hr_label <- paste0('HR =' , hr, '[', ci[1], '-', ci[2], ']')
+pval <- signif(summary_fit$coefficients[1, 'Pr(>|z|)'],3)
+pval_label <- paste0('p = ', pval)
+
+P1 <- ggsurvplot(fit, data = High_sig_df,
+                 surv.median.line = 'hv',
+                 risk.table = TRUE,
+                 risk.table.y.text.col = TRUE,
+                 risk.table.height = 0.25,
+                 risk.table.y.text = FALSE,
+                 break.time.by = 5,
+                 legend = 'right',
+                 legend.title = 'Group',
+                 pval = FALSE,
+                 palette = c('#E69F00', '#56B4E9','#e12885'),
+                 ggtheme = theme_classic2())
+
+P1$table <- P1$table +
+  theme(
+    axis.title.x = element_blank(),
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank(),
+    panel.border = element_blank()
+  )
+
+P1$plot <- P1$plot + annotate('text',
+                              x= medians$median[[1]] - 1,
+                              y = 0.02,
+                              label = paste0(round(medians$median[[1]], 1)),
+                              color = c('#E69F00'),
+                              hjust =0,
+                              size = 4)  +
+  annotate('text',
+           x= medians$median[[2]]+ 0.5,
+           y = 0.02,
+           label = paste0(round(medians$median[[2]], 1)),
+           color = c('#56B4E9'),
+           hjust =0,
+           size = 4) +
+  annotate('text',
+           x= medians$median[[3]]+ 0.5,
+           y = 0.02,
+           label = paste0(round(medians$median[[3]], 1)),
+           color = c('#e12885'),
+           hjust =0,
+           size = 4) +
+  annotate('text', x = max(DF_AB$OS) * 0.65, y=0.95,
+           label = hr_label, hjust = 0, size = 4) +
+  annotate('text', x = max(DF_AB$OS) * 0.65, y=0.89,
+           label = pval_label, hjust = 0, size = 4) +
+  annotate('segment', x=0, xend =10, y=0.5, yend =0.5,
+           color = 'gray50', linetype = 'dotted')+
+  labs(x = 'Time to event (months)', y = 'PFS Probability')
+
+P1
+#5.5.4 PFS in sig low
+surv_obj <- Surv(Low_sig_df$PFS, Low_sig_df$PFS_Censor == 0)
+fit <- survfit(surv_obj ~ TRT01P, data = Low_sig_df)
+medians <- surv_median(fit)
+cox_fit <- coxph(surv_obj ~ TRT01P, data = Low_sig_df)
+summary_fit <- summary(cox_fit)
+hr <- round(summary_fit$coefficients[1, 'exp(coef)'],2)
+ci <- round(summary_fit$conf.int[1, c('lower .95', 'upper .95')],2)
+hr_label <- paste0('HR =' , hr, '[', ci[1], '-', ci[2], ']')
+pval <- signif(summary_fit$coefficients[1, 'Pr(>|z|)'],3)
+pval_label <- paste0('p = ', pval)
+
+P1 <- ggsurvplot(fit, data = Low_sig_df,
+                 surv.median.line = 'hv',
+                 risk.table = TRUE,
+                 risk.table.y.text.col = TRUE,
+                 risk.table.height = 0.25,
+                 risk.table.y.text = FALSE,
+                 break.time.by = 5,
+                 legend = 'right',
+                 legend.title = 'Group',
+                 pval = FALSE,
+                 palette = c('#E69F00', '#56B4E9','#e12885'),
+                 ggtheme = theme_classic2())
+
+P1$table <- P1$table +
+  theme(
+    axis.title.x = element_blank(),
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank(),
+    panel.border = element_blank()
+  )
+
+P1$plot <- P1$plot + annotate('text',
+                              x= medians$median[[1]] - 1,
+                              y = 0.02,
+                              label = paste0(round(medians$median[[1]], 1)),
+                              color = c('#E69F00'),
+                              hjust =0,
+                              size = 4)  +
+  annotate('text',
+           x= medians$median[[2]]+ 0.5,
+           y = 0.02,
+           label = paste0(round(medians$median[[2]], 1)),
+           color = c('#56B4E9'),
+           hjust =0,
+           size = 4) +
+  annotate('text',
+           x= medians$median[[3]]+ 0.5,
+           y = 0.02,
+           label = paste0(round(medians$median[[3]], 1)),
+           color = c('#e12885'),
+           hjust =0,
+           size = 4) +
+  annotate('text', x = max(DF_AB$OS) * 0.65, y=0.95,
+           label = hr_label, hjust = 0, size = 4) +
+  annotate('text', x = max(DF_AB$OS) * 0.65, y=0.89,
+           label = pval_label, hjust = 0, size = 4) +
+  annotate('segment', x=0, xend =10, y=0.5, yend =0.5,
+           color = 'gray50', linetype = 'dotted')+
+  labs(x = 'Time to event (months)', y = 'PFS Probability')
+
+P1
+
+##5.6 Supplementary plots
+merged_df1 <- merged_df_Adp %>% filter(TRT01P %in% c('Atezo+Bev','Sorafenib'))
+merged_df2 <- merged_df1 %>% filter(responder %in% c('0','1'))
+merged_df3 <- merged_df2 %>% filter(TRT01P %in% c('Atezo+Bev'))
+p1wilcox <- wilcox.test(AdaptiveNK_Score ~ responder, data = merged_df3, exact = F)
+p1medians <- merged_df3 %>% group_by(responder) %>% summarise(med = median(AdaptiveNK_Score))
+p_density <- ggplot(merged_df3, aes(x = AdaptiveNK_Score, color = responder))+
+  geom_density(aes(y = ..scaled..),size = 1.1, adjust = 1) + 
+  scale_color_manual(values = c('#3C91E6','#E74C3C'))+ 
+  theme_classic(base_size = 14) + 
+  labs(x = 'CAN Score', y ='Propbality density',color = '') + 
+  annotate('text', x = 0.5, y =1.2, label = 'MD = 0.355   P=0.0004',size = 5)
+p_density
+
+
+
+expr_sub <- Expr[rownames(Expr) %in% gene_list, ]
+expr_sub <-t(expr_sub)
+commom_Pts <- intersect(rownames(expr_sub), merged_df3$UNI_ID)
+expr_sub <- expr_sub[rownames(expr_sub) %in% commom_Pts,]
+dfml <- cbind(merged_df3, expr_sub)
+library(glmnet)
+library(caret)
+library(dplyr)
+library(tibble)
+x <- as.matrix(dfml[, c(23:39932)])
+y <- as.factor(dfml$responder)
+set.seed(123)
+cvfit <- cv.glmnet(x,y,family = 'binomial', alpha = 0.1)
+best_lambda <- cvfit$lambda.min
+coef_df <- coef(cvfit, s = 'lambda.min')
+coef_df <- as.data.frame(as.matrix(coef_df))
+coef_df <- coef_df %>%
+  rownames_to_column('gene') %>%
+  rename(weight = s1) %>%
+  filter(weight !=0)
+coef_df
+
+coef_df1 <- coef_df[-2,]
+coef_df1 <- coef_df1[-12,]
+selected_genes <- coef_df1$gene [coef_df1$gene != '(Intercept)']
+weight <- coef_df1$weight [coef_df1$gene != '(Intercept)']
+Index <- as.vector(as.matrix(expr_sub[, selected_genes]) %*% weight)
+dfml$CAN_Index <- Index
+
+
+
+library(pROC)
+roc_obj <- roc(dfml$responder, dfml$CAN_Index)
+auc_val <-auc(roc_obj)
+ggplot(dfml, aes(x = responder, y = CAN_Index, fill = responder)) +
+  geom_boxplot(alpha = 0.7) +
+  geom_jitter(width = 0.1, alpha =0.6) +
+  theme_classic(base_size = 14) +
+  labs(title = paste('Predictive CAN Index AUC'), round(auc_val, 3))
+
+dfml$Group <- ifelse(dfml$CAN_Index > median(dfml$CAN_Index),'High','Low')
+fit <- survfit(Surv(dfml$OS, dfml$OS_Censor == 0) ~ Group, data = dfml)
+ggsurvplot(fit, data = dfml, pval = T, risk.table = T)
+
+dfml$Bin <- ifelse(dfml$responder == '1', 1, 0)
+roc_res <- roc(dfml$Bin, dfml$AdaptiveNK_Score)
+auc_val <- round(auc(roc_res),2)
+plot(roc_res, col = '#E74C3C', lwd =2, main = paste0("ROC curve (AUC = ", auc_val,")"))
+abline(a =0, b = 1, lty = 2, col = 'gray')
+
+
+IL12_set <- list(IL12_Score =c('IL12A','IL12B','IL12RB1','IL12RB2','JAK2','TYK2'))
+TGFb_set <- list(TGFb_Score =c('TGFB1','TGFB2','TGFB3','TGFBR1','TGFBR2','SMAD2','SMAD3'))
+IL18_set <- list(IL18_Score = c('IL18','IL18R1','IL18RAP','IL4','ALOX5','IL37','IL13'))
