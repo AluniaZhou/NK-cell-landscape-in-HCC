@@ -1,0 +1,92 @@
+###Figure 1B###
+my_colors <- c("#E8D366","#EC4533",'#9FD4CA'   ,"#9ACD32", "#63C1E0",'#137a7f', 
+               "#C49BEF", "#B1938D", "#2F79B7",  "#F58D2F","#9E3E38")
+DimPlot(CD45, reduction = 'umap.harmony', group.by = 'CelltypeL2',cols = my_colors )
+
+
+
+###Figure 1C###
+NK@meta.data[which(NK@meta.data$CelltypeL3 == 'NK1_CD55'),'Lable'] <- '01'
+NK@meta.data[which(NK@meta.data$CelltypeL3 == 'NK1_FGFBP2'),'Lable'] <- '02'
+NK@meta.data[which(NK@meta.data$CelltypeL3 == 'NK1_HSPA1B'),'Lable'] <- '03'
+NK@meta.data[which(NK@meta.data$CelltypeL3 == 'NK2_GZMK'),'Lable'] <- '04'
+NK@meta.data[which(NK@meta.data$CelltypeL3 == 'NK2_HSPA1B'),'Lable'] <- '05'
+NK@meta.data[which(NK@meta.data$CelltypeL3 == 'NK2_KLRK1'),'Lable'] <- '06'
+NK@meta.data[which(NK@meta.data$CelltypeL3 == 'NK3_KLRC2'),'Lable'] <- '07'
+NK@meta.data[which(NK@meta.data$CelltypeL3 == 'ILC1_IL7R'),'Lable'] <- '08'
+NK@meta.data[which(NK@meta.data$CelltypeL3 == 'IntILC1_ITGA1'),'Lable'] <- '09'
+NK_colors <- c('#E07A1F',"#D92B03",'#EE9B8C',
+             '#88AEE0','#BED7EB','#4DBBD5','#8EBF8E',
+             '#A8A7CC','#9A8CBF')
+DimPlot(NK, reduction = 'umap.harmony', group.by = 'Lable', label = T, label.size = 6,cols = NK_colors )
+NK$CelltypeL3 <- factor(NK$CelltypeL3, 
+                        levels = c('NK1_CD55','NK1_FGFBP2', 'NK1_HSPA1B','NK2_GZMK',
+                                   'NK2_HSPA1B','NK2_KLRK1','NK3_KLRC2','ILC1_IL7R','IntILC1_ITGA1'))
+
+
+
+
+###Figure 1D###
+p <- DotPlot(
+  NK,
+  features = c('FCGR3A',"CD55","FGFBP2",'SPON2','HSPA1B','NCAM1','GZMK','KLRK1','KLRC2','CD52',
+               'IL7R','DUSP4','ITGA1'),
+  group.by = 'CelltypeL3'
+) +
+  scale_fill_gradient2(
+    low = '#214EA7',
+    mid = "white",
+    high = "#D92B03",
+    midpoint = -0.2
+  ) +
+  scale_size_continuous(range = c(2, 8)) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  guides(
+    fill = guide_colorbar(title = "Scaled avg exp"),
+    size = guide_legend(title = "Percent Expressed")
+  )
+p$layers[[1]] <- NULL
+p <- p + geom_point(
+  aes(size = pct.exp, fill = avg.exp.scaled),
+  shape = 21,               # filled circle supports border
+  color = "black",          # outline color
+  stroke = 0.4              # outline width
+)
+p
+
+
+
+
+###Figure 1E###
+genes <- c('NCR1','NCR3','KLRK1','CD226','FCGR3A',
+           'KLRC1','TIGIT','CD96','LAG3','PDCD1','CTLA4',
+           'HAVCR2','LAIR1','SIGLEC7','SIGLEC9','LILRB1','KIR2DL1','KIR2DL3','KIR3DL1','KIR3DL2',
+           'GZMK','GZMA','PRF1','GZMB','GNLY','NKG7','GZMH','GZMM',
+           'IFNG','TNF','TGFB1','IL10','IL18','IL16','IL32','CSF1',
+           'IL2RB','IL2RG','IL15RA','IL12RB1','IL18R1','IL18RAP','TGFBR1','TGFBR2','IL7R','IL27RA','IL1R1','IFNAR1',
+           'CCL3','CCL4','CCL5','XCL1','XCL2',
+           'CXCR3','CXCR4','CXCR6','CX3CR1','CCR1','CCR2','CCR5','CCR6')
+count <- as.matrix(GetAssayData(object = NK, slot = "data"))[genes, , drop = FALSE]
+count <- as.data.frame(t(count))
+group <- as.character(NK$Lable)
+gene.mean <- rowsum(count, group = group) / as.vector(table(group))
+gene.mean <- scale(gene.mean)
+library(ComplexHeatmap)
+library(grid)
+library(circlize)
+cols = colorRamp2(seq(from = -2, to = 2, length.out = 11),
+                  c("#053061", "#2166AC", "#4393C3",
+                    "#92C5DE", "#D1E5F0", "#FFFFFF", "#FDDBC7",
+                    "#F4A582", "#D6604D","#B2182B", "#67001F"))
+Heatmap(
+  t(gene.mean),
+  cluster_rows = FALSE,
+  cluster_columns = FALSE,
+  col = cols,
+  name = "Z score",
+  column_title = NULL,
+  column_names_side = "top",
+  column_names_rot = 0,
+  row_title_rot = 90,
+  border = FALSE,   # draw borders around each cell
+  rect_gp = gpar(col = "white", lwd = 0.5))
